@@ -13,8 +13,12 @@ app/streamlit_app.py). See ../ATTRIBUTION.md.
 """
 
 import ast
+import os
 import re
 import sys
+
+# make `from api.x import y` / `from src.x import y` work when run as a script
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import pandas as pd
