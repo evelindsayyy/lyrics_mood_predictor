@@ -1,0 +1,13 @@
+.venv
+.git
+SpotGenTrack
+data
+models
+results
+videos
+notebooks
+docs
+tests
+__pycache__
+*.ipynb
+.DS_Store
