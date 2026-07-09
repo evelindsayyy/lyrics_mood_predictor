@@ -11,6 +11,9 @@ import uuid
 
 import structlog
 from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logger = structlog.get_logger()
 
 
 def configure_logging() -> None:
@@ -31,6 +34,18 @@ async def request_id_middleware(request: Request, call_next):
     structlog.contextvars.bind_contextvars(request_id=rid, path=request.url.path)
     try:
         response = await call_next(request)
+    except Exception as exc:
+        # Starlette's ServerErrorMiddleware runs the bare-Exception handler in
+        # api/errors.py OUTSIDE user middleware, so by the time it logs, this
+        # finally has already cleared contextvars and the header line below
+        # never runs. Handle it here while request_id/path are still bound and
+        # the header can still be set. The inline envelope MUST stay in sync
+        # with api/errors.py's _envelope shape ({"error": {"code", "message"}}).
+        logger.error("internal_error", exc_info=exc)
+        response = JSONResponse(
+            status_code=500,
+            content={"error": {"code": "internal_error", "message": "internal server error"}},
+        )
     finally:
         structlog.contextvars.clear_contextvars()
     response.headers["x-request-id"] = rid

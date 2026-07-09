@@ -57,3 +57,4 @@ def test_predict_model_failure_500_envelope():
     r = _client(model=FakeMoodModel(fail=True)).post("/v1/predict", json={"lyrics": "hello world"})
     assert r.status_code == 500
     assert r.json()["error"]["code"] == "internal_error"
+    assert r.headers["x-request-id"]
