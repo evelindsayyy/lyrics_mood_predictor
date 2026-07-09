@@ -6,7 +6,7 @@ loop free while sklearn/SHAP work.
 
 AI attribution: implementation by Claude (Anthropic) based on my specification
 (contract from design spec §3.1/§5, including the non-English warning
-heuristic for the known clean_text Latin-script limitation). See ../ATTRIBUTION.md.
+heuristic for the known clean_text Latin-script limitation). See ../../ATTRIBUTION.md.
 """
 
 import structlog

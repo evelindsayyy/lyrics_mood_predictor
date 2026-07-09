@@ -6,7 +6,7 @@ same protocol.
 
 AI attribution: implementation by Claude (Anthropic) based on my specification
 (protocol shape, fail-fast artifact loading, explanation semantics carried
-over from app/streamlit_app.py). See ../ATTRIBUTION.md.
+over from app/streamlit_app.py). See ../../ATTRIBUTION.md.
 """
 
 from dataclasses import dataclass
@@ -15,10 +15,13 @@ from typing import Protocol
 import joblib
 import numpy as np
 import pandas as pd
+import structlog
 
 from api.config import Settings
 from src.explain import explain_prediction
 from src.preprocess import clean_text
+
+logger = structlog.get_logger()
 
 
 class ArtifactError(Exception):
@@ -74,7 +77,9 @@ class BaselineMoodModel:
             pairs = [(str(fn[i]), float(sv[i])) for i in present]
             top = sorted(pairs, key=lambda kv: abs(kv[1]), reverse=True)[:10]
             return sorted(top, key=lambda kv: kv[1], reverse=True)
-        except Exception:
+        except Exception as exc:
+            # Never log lyrics content; the exception type is enough to triage.
+            logger.warning("explain_failed", error=type(exc).__name__)
             return None
 
 

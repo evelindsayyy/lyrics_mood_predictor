@@ -3,7 +3,7 @@ Retrieval client layer. Week 1 only needs ping() for /health; vector search
 and payload lookup land in Week 3 behind this same protocol.
 
 AI attribution: implementation by Claude (Anthropic) based on my specification.
-See ../ATTRIBUTION.md.
+See ../../ATTRIBUTION.md.
 """
 
 from typing import Protocol
