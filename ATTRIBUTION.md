@@ -20,6 +20,13 @@ Below is an honest breakdown of where AI help was material vs. where I wrote thi
 - `src/recommend.py` — I specified the MiniLM model (`all-MiniLM-L6-v2`), the disk-cache strategy, the L2-normalize-at-embed-time convention (Claude proposed this optimization in a concept-explanation conversation), the mood-filter behavior, and the cosine-similarity ranking. Claude wrote the bodies.
 - `src/explain.py` — I specified using SHAP `LinearExplainer` (because the model is linear and this gives exact Shapley values), the background-sample-from-training strategy, and the input-vocabulary filter so "top negatives" only show words actually in the input. Claude wrote the bodies and the version-defensive `isinstance` branch (which came out of a debugging session after I hit a SHAP shape mismatch).
 
+## API service — `api/` and `scripts/index_corpus.py`
+
+**Written by Claude based on my design spec** ([docs/superpowers/specs/2026-07-09-industrial-elevation-design.md](docs/superpowers/specs/2026-07-09-industrial-elevation-design.md)). I designed the FastAPI app-factory structure, the DI/lifespan approach, the error contract, and the Qdrant indexing scheme; Claude implemented them. I reviewed and tested every file, including running the full Docker Compose stack end-to-end (76,595 songs indexed) and the 33-test pytest suite:
+
+- **`api/`** (`config.py`, `schemas.py`, `errors.py`, `logging_setup.py`, `deps.py`, `main.py`, `routes/`, `services/`) — the FastAPI service: settings, request/response schemas, the `{"error": {code, message}}` contract, logging setup that never logs raw lyrics, dependency injection, the `create_app()` factory, health/predict routes, and the model/retrieval service wrappers.
+- **`scripts/index_corpus.py`** — the one-time/idempotent script that populates the Qdrant collection from the processed corpus.
+
 ## Streamlit app — `app/streamlit_app.py`
 
 **Written by Claude based on my visual design.** I created the design upfront — `docs/design/LyricMood Minimal.html` (the visual mock), `app/static/lyricmood.css` (the design tokens and component styles), and `docs/design/DESIGN_HANDOFF.md` (the spec doc) — and gave that to Claude as input. Claude wrote the Python implementation and the CSS overrides that re-skin Streamlit's built-in widgets to match (chipbar layout, raw-HTML SHAP horizontal bar chart, song-list grid, `set_mood_accent()` helper for swapping the active mood color). I integrated, tested, iterated, and own the `@st.cache_resource` data-loading strategy and the prediction → SHAP → retrieval data flow.

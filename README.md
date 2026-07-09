@@ -28,6 +28,12 @@ pip install -r requirements.txt
 
 # 3. run the app
 streamlit run app/streamlit_app.py
+
+# 4. (new) run the REST API + vector DB
+docker compose up            # api on :8000, qdrant on :6333
+python scripts/index_corpus.py   # one-time corpus indexing
+curl -X POST localhost:8000/v1/predict -H 'content-type: application/json' \
+  -d '{"lyrics": "your lyrics here"}'
 ```
 
 Full step-by-step setup is in [SETUP.md](SETUP.md).
