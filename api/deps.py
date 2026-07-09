@@ -1,4 +1,9 @@
-"""Dependency accessors — routes depend on app.state, tests inject fakes."""
+"""
+Dependency accessors — routes depend on app.state, tests inject fakes.
+
+AI attribution: implementation by Claude (Anthropic) based on my specification.
+See ../ATTRIBUTION.md.
+"""
 
 from fastapi import Request
 

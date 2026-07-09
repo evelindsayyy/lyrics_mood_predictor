@@ -1,4 +1,9 @@
-"""GET /health — liveness plus dependency status."""
+"""
+GET /health — liveness plus dependency status.
+
+AI attribution: implementation by Claude (Anthropic) based on my specification.
+See ../../ATTRIBUTION.md.
+"""
 
 from fastapi import APIRouter, Depends
 
