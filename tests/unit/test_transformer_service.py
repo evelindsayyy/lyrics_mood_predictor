@@ -20,11 +20,11 @@ def test_softmax_rows_sum_to_one():
 
 def test_predict_returns_prediction_result(tiny_onnx_dir):
     m = _load(tiny_onnx_dir)
-    r = m.predict("stadium lights bass kicking loud crowd")
+    r = m.predict("stadium lights bass kicking loud crowd", explain=False)
     assert r.mood in {"Angry", "Calm", "Hype", "Romantic", "Sad"}
     assert 0.0 < r.confidence <= 1.0
     assert pytest.approx(sum(r.probabilities.values()), abs=1e-5) == 1.0
-    assert r.explanation is None  # SHAP lands in the next task
+    assert r.explanation is None  # explanation path covered in test_transformer_explain.py
     assert m.version == "tiny-onnx-v0"
 
 

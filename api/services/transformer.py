@@ -16,11 +16,14 @@ from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
+import structlog
 from tokenizers import Tokenizer
 
 from api.services.model import ArtifactError, PredictionResult
 
 REQUIRED_FILES = ("model.onnx", "tokenizer.json", "labels.json")
+
+logger = structlog.get_logger()
 
 
 def softmax(x: np.ndarray) -> np.ndarray:
@@ -33,22 +36,61 @@ def softmax(x: np.ndarray) -> np.ndarray:
 class TransformerMoodModel:
     """Fine-tuned transformer via onnxruntime. Implements MoodModel."""
 
-    def __init__(self, session, tokenizer, labels: list[str], version: str, max_len: int = 256):
+    def __init__(
+        self,
+        session,
+        tokenizer,
+        labels: list[str],
+        version: str,
+        max_len: int = 256,
+        explain_max_chars: int = 300,
+        explain_max_evals: int = 64,
+    ):
         self._session = session
         self._tokenizer = tokenizer
         self._labels = list(labels)
         self._max_len = max_len
+        self._explain_max_chars = explain_max_chars
+        self._explain_max_evals = explain_max_evals
         self.version = version
 
     def predict(self, lyrics: str, explain: bool = True) -> PredictionResult:
         probs = self._predict_proba([lyrics])[0]
         idx = int(np.argmax(probs))
+        explanation = None
+        if explain:
+            try:
+                explanation = self._explain(lyrics)
+            except Exception as exc:
+                logger.warning("explain_failed", error=type(exc).__name__)
         return PredictionResult(
             mood=self._labels[idx],
             confidence=float(probs[idx]),
             probabilities={l: float(p) for l, p in zip(self._labels, probs)},
-            explanation=None,  # SHAP text explanation added in the explain task
+            explanation=explanation,
         )
+
+    def _explain(self, lyrics: str) -> list[tuple[str, float]] | None:
+        """Token-level SHAP via the Text masker; capped for latency."""
+        import shap  # local import: keeps module import light
+
+        text = lyrics[: self._explain_max_chars]
+        probs = self._predict_proba([text])[0]
+        class_idx = int(np.argmax(probs))
+
+        masker = shap.maskers.Text(r"\W+")  # regex splitter — tokenizer-agnostic
+        explainer = shap.Explainer(
+            lambda texts: self._predict_proba(list(texts)), masker, silent=True
+        )
+        exp = explainer([text], max_evals=self._explain_max_evals)
+        tokens = [str(t).strip() for t in exp.data[0]]
+        values = np.asarray(exp.values[0])[:, class_idx]
+
+        pairs = [(t, float(v)) for t, v in zip(tokens, values) if t]
+        if not pairs:
+            return None
+        top = sorted(pairs, key=lambda kv: abs(kv[1]), reverse=True)[:10]
+        return sorted(top, key=lambda kv: kv[1], reverse=True)
 
     def _predict_proba(self, texts: list[str]) -> np.ndarray:
         encodings = self._tokenizer.encode_batch(list(texts))
