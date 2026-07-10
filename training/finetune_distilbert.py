@@ -63,6 +63,8 @@ def main(argv=None) -> int:
     from torch.utils.data import DataLoader, TensorDataset
     from transformers import AutoTokenizer, DistilBertConfig, DistilBertForSequenceClassification
 
+    torch.manual_seed(42)  # reproducible head init + dropout for the real Colab run
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

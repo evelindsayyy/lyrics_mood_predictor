@@ -128,7 +128,7 @@ def main(argv=None) -> int:
     settings = Settings()
     reg = load_registry(settings.registry_path)
     spec = reg.models[args.model]
-    model = load_baseline(settings) if spec.kind == "baseline" else load_transformer(spec.dir, spec.version)
+    model = load_baseline(settings, version=spec.version) if spec.kind == "baseline" else load_transformer(spec.dir, spec.version)
 
     df = pd.read_csv(settings.labeled_songs_path)
     test_df = frozen_test_split(df)

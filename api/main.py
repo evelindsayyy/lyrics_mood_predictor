@@ -44,7 +44,7 @@ def create_app(
             loaded: dict[str, MoodModel] = {}
             for name, spec in reg.models.items():
                 if spec.kind == "baseline":
-                    loaded[name] = load_baseline(cfg)
+                    loaded[name] = load_baseline(cfg, version=spec.version)
                 elif spec.kind == "onnx" and spec.dir is not None and spec.dir.exists():
                     loaded[name] = load_transformer(spec.dir, spec.version)
                 else:

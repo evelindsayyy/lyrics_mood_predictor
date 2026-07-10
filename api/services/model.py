@@ -83,7 +83,7 @@ class BaselineMoodModel:
             return None
 
 
-def load_baseline(settings: Settings) -> BaselineMoodModel:
+def load_baseline(settings: Settings, version: str = "baseline-lr-v1") -> BaselineMoodModel:
     """Load pickled artifacts; fail fast with the offending path in the message."""
     clf_path = settings.model_dir / settings.baseline_classifier
     vec_path = settings.model_dir / settings.baseline_vectorizer
@@ -101,4 +101,4 @@ def load_baseline(settings: Settings) -> BaselineMoodModel:
         bg_idx = rng.choice(len(df), size=n, replace=False)
         background = vec.transform(df["lyrics"].iloc[bg_idx].map(clean_text))
 
-    return BaselineMoodModel(clf=clf, vectorizer=vec, background=background)
+    return BaselineMoodModel(clf=clf, vectorizer=vec, background=background, version=version)

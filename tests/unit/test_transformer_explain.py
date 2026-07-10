@@ -39,3 +39,19 @@ def test_long_input_is_capped(tiny_onnx_dir):
     r = m.predict(long_text, explain=True)
     # must complete (input capped to explain_max_chars) and stay bounded
     assert r.explanation is None or len(r.explanation) <= 10
+
+
+def test_explained_class_matches_returned_mood_for_long_input(tiny_onnx_dir, monkeypatch):
+    m = _load(tiny_onnx_dir)
+    captured = {}
+    orig = m._explain
+
+    def spy(text, class_idx):
+        captured["class_idx"] = class_idx
+        return orig(text, class_idx)
+
+    monkeypatch.setattr(m, "_explain", spy)
+    long_text = ("rain empty street coat chair alone " * 30) + "stadium lights bass kicking loud crowd " * 30
+    r = m.predict(long_text, explain=True)
+    labels = ["Angry", "Calm", "Hype", "Romantic", "Sad"]
+    assert labels[captured["class_idx"]] == r.mood

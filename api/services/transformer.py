@@ -60,7 +60,7 @@ class TransformerMoodModel:
         explanation = None
         if explain:
             try:
-                explanation = self._explain(lyrics)
+                explanation = self._explain(lyrics, idx)
             except Exception as exc:
                 logger.warning("explain_failed", error=type(exc).__name__)
         return PredictionResult(
@@ -70,13 +70,16 @@ class TransformerMoodModel:
             explanation=explanation,
         )
 
-    def _explain(self, lyrics: str) -> list[tuple[str, float]] | None:
-        """Token-level SHAP via the Text masker; capped for latency."""
+    def _explain(self, lyrics: str, class_idx: int) -> list[tuple[str, float]] | None:
+        """Token-level SHAP via the Text masker; capped for latency.
+
+        `class_idx` is the argmax computed once in predict() on the FULL text,
+        so the explained class always matches the returned mood even when the
+        char cap below would shift the argmax on truncated input.
+        """
         import shap  # local import: keeps module import light
 
         text = lyrics[: self._explain_max_chars]
-        probs = self._predict_proba([text])[0]
-        class_idx = int(np.argmax(probs))
 
         masker = shap.maskers.Text(r"\W+")  # regex splitter — tokenizer-agnostic
         explainer = shap.Explainer(
