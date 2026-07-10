@@ -27,6 +27,17 @@ Below is an honest breakdown of where AI help was material vs. where I wrote thi
 - **`api/`** (`config.py`, `schemas.py`, `errors.py`, `logging_setup.py`, `deps.py`, `main.py`, `routes/`, `services/`) — the FastAPI service: settings, request/response schemas, the `{"error": {code, message}}` contract, logging setup that never logs raw lyrics, dependency injection, the `create_app()` factory, health/predict routes, and the model/retrieval service wrappers.
 - **`scripts/index_corpus.py`** — the one-time/idempotent script that populates the Qdrant collection from the processed corpus.
 
+## Transformer training + multi-model serving — `training/` and `api/services/{registry,transformer}.py`
+
+**Written by Claude based on my design spec** ([docs/superpowers/specs/2026-07-09-industrial-elevation-design.md](docs/superpowers/specs/2026-07-09-industrial-elevation-design.md), §3.2). I specified the fine-tuning recipe (`distilbert-base-uncased`, max_len 256, 2-3 epochs, class-weighted loss, early stopping on val macro F1), the identical-split discipline with the notebooks (`random_state=42`), the int8 dynamic ONNX quantization export, the `--smoke` mode for a fast CPU-only pipeline check, the eval harness contract (frozen test split, quality gate vs. majority-class baseline, markdown report), and the registry-driven multi-model serving design (`models/registry.json` pins loaded models + default, `?model=` query param selects per-request). Claude implemented them; I ran the `--smoke` check and the `--model baseline` eval end-to-end to verify both work before this runbook was written:
+
+- **`training/finetune_distilbert.py`** — the fine-tuning + ONNX export script (Colab-targeted, CPU-testable via `--smoke`).
+- **`training/evaluate.py`** — the eval harness: frozen-split scoring, quality gate, markdown report, optional MLflow logging.
+- **`api/services/registry.py`** — loads and validates `models/registry.json`.
+- **`api/services/transformer.py`** — the ONNX/onnxruntime serving wrapper implementing the same `MoodModel` protocol as the baseline, so `?model=transformer` is a drop-in swap.
+
+The actual Colab fine-tune run, the transformer-vs-baseline comparison, and the registry promotion decision are mine to make (see [training/README.md](training/README.md)) — not yet done as of this commit.
+
 ## Streamlit app — `app/streamlit_app.py`
 
 **Written by Claude based on my visual design.** I created the design upfront — `docs/design/LyricMood Minimal.html` (the visual mock), `app/static/lyricmood.css` (the design tokens and component styles), and `docs/design/DESIGN_HANDOFF.md` (the spec doc) — and gave that to Claude as input. Claude wrote the Python implementation and the CSS overrides that re-skin Streamlit's built-in widgets to match (chipbar layout, raw-HTML SHAP horizontal bar chart, song-list grid, `set_mood_accent()` helper for swapping the active mood color). I integrated, tested, iterated, and own the `@st.cache_resource` data-loading strategy and the prediction → SHAP → retrieval data flow.

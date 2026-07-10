@@ -49,6 +49,10 @@ Both videos are stored in this repository under [`videos/`](videos/) and also li
 
 ## Evaluation
 
+> **Week 2 (in progress):** a fine-tuned DistilBERT is being added behind the same API
+> (`?model=transformer`). Numbers will appear here from `training/evaluate.py` reports
+> once the Colab fine-tune completes — see [training/README.md](training/README.md).
+
 Best model: logistic regression (C=1.0, L2, `class_weight='balanced'`) on TF-IDF features (unigrams + bigrams, 20k vocab cap, min_df=3, sublinear_tf). The first-pass sweep of 7 configs (4 LR × 3 MultinomialNB) is in [notebooks/02_modeling.ipynb](notebooks/02_modeling.ipynb); a second-pass tuning of the TF-IDF knobs is in [notebooks/03_evaluation.ipynb](notebooks/03_evaluation.ipynb).
 
 | metric | value | notes |
