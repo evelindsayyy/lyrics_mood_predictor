@@ -8,7 +8,11 @@ from tests.conftest import FakeMoodModel, FakeRetrieval
 def _client(retrieval_ok=True):
     from api.main import create_app
 
-    app = create_app(model=FakeMoodModel(), retrieval=FakeRetrieval(ok=retrieval_ok))
+    app = create_app(
+        models={"baseline": FakeMoodModel()},
+        default="baseline",
+        retrieval=FakeRetrieval(ok=retrieval_ok),
+    )
     return TestClient(app)
 
 
@@ -20,6 +24,8 @@ def test_health_ok():
         "model_loaded": True,
         "qdrant_ok": True,
         "model_version": "fake-v0",
+        "models_loaded": ["baseline"],
+        "default_model": "baseline",
     }
 
 

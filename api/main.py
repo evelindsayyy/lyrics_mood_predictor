@@ -1,7 +1,7 @@
 """
 App factory. Lifespan loads real artifacts unless fakes are injected
-(tests pass model=/retrieval=). Routes are sync `def` so FastAPI runs
-them in its thread pool — blocking sklearn/SHAP inference never blocks
+(tests pass models=/default=/retrieval=). Routes are sync `def` so FastAPI
+runs them in its thread pool — blocking sklearn/SHAP inference never blocks
 the event loop.
 
 AI attribution: implementation by Claude (Anthropic) based on my specification
@@ -10,19 +10,25 @@ AI attribution: implementation by Claude (Anthropic) based on my specification
 
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 
 from api.config import Settings
 from api.errors import register_exception_handlers
 from api.logging_setup import configure_logging, request_id_middleware
 from api.routes import health, predict
-from api.services.model import MoodModel, load_baseline
+from api.services.model import ArtifactError, MoodModel, load_baseline
+from api.services.registry import load_registry
 from api.services.retrieval import QdrantRetrieval, RetrievalClient
+from api.services.transformer import load_transformer
+
+logger = structlog.get_logger()
 
 
 def create_app(
     settings: Settings | None = None,
-    model: MoodModel | None = None,
+    models: dict[str, MoodModel] | None = None,
+    default: str | None = None,
     retrieval: RetrievalClient | None = None,
 ) -> FastAPI:
     cfg = settings or Settings()
@@ -30,11 +36,24 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Load real artifacts only for deps that were not injected. Injected
+        # Load real artifacts only for state that was not injected. Injected
         # fakes (set eagerly below) are left untouched, so tests never touch
         # pickles and the module-level app still defers loading to startup.
-        if not hasattr(app.state, "model"):
-            app.state.model = load_baseline(cfg)
+        if not hasattr(app.state, "models"):
+            reg = load_registry(cfg.registry_path)
+            loaded: dict[str, MoodModel] = {}
+            for name, spec in reg.models.items():
+                if spec.kind == "baseline":
+                    loaded[name] = load_baseline(cfg)
+                elif spec.kind == "onnx" and spec.dir is not None and spec.dir.exists():
+                    loaded[name] = load_transformer(spec.dir, spec.version)
+                else:
+                    logger.info("model_unavailable", model=name)
+            if reg.default not in loaded:
+                raise ArtifactError(f"registry default {reg.default!r} failed to load")
+            app.state.models = loaded
+            app.state.default_model = reg.default
+            app.state.registry_names = set(reg.models)
         if not hasattr(app.state, "retrieval"):
             app.state.retrieval = QdrantRetrieval(cfg.qdrant_url)
         yield
@@ -44,8 +63,10 @@ def create_app(
     # when TestClient is used without a lifespan context (starlette>=1.x only
     # runs lifespan inside `with TestClient(...)`).
     app.state.settings = cfg
-    if model is not None:
-        app.state.model = model
+    if models is not None:
+        app.state.models = dict(models)
+        app.state.default_model = default if default is not None else next(iter(models))
+        app.state.registry_names = set(models)
     if retrieval is not None:
         app.state.retrieval = retrieval
     app.middleware("http")(request_id_middleware)

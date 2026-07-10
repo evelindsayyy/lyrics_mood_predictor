@@ -8,7 +8,11 @@ from tests.conftest import FakeMoodModel, FakeRetrieval
 def _client(model=None):
     from api.main import create_app
 
-    app = create_app(model=model or FakeMoodModel(), retrieval=FakeRetrieval())
+    app = create_app(
+        models={"baseline": model or FakeMoodModel()},
+        default="baseline",
+        retrieval=FakeRetrieval(),
+    )
     return TestClient(app, raise_server_exceptions=False)
 
 

@@ -10,9 +10,9 @@ heuristic for the known clean_text Latin-script limitation). See ../../ATTRIBUTI
 """
 
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
-from api.deps import get_model
+from api.deps import get_default_model_name, get_models
 from api.errors import ApiError
 from api.schemas import PredictRequest, PredictResponse, TokenWeight
 from api.services.model import MoodModel
@@ -37,14 +37,25 @@ def non_english_warnings(text: str) -> list[str]:
 def predict(
     req: PredictRequest,
     explain: bool = Query(True),
-    model: MoodModel = Depends(get_model),
+    model: str | None = Query(None),
+    models: dict[str, MoodModel] = Depends(get_models),
+    default_name: str = Depends(get_default_model_name),
+    request: Request = None,
 ) -> PredictResponse:
     text = req.lyrics.strip()
     if not text:
         raise ApiError(400, "empty_lyrics", "lyrics must contain non-whitespace text")
 
-    result = model.predict(text, explain=explain)
-    logger.info("predict", input_chars=len(text), mood=result.mood, model=model.version)
+    name = model or default_name
+    if name not in models:
+        registry_names = getattr(request.app.state, "registry_names", set(models))
+        if name in registry_names:
+            raise ApiError(503, "model_unavailable", f"model {name!r} is registered but not loaded")
+        raise ApiError(400, "unknown_model", f"unknown model {name!r}")
+
+    chosen = models[name]
+    result = chosen.predict(text, explain=explain)
+    logger.info("predict", input_chars=len(text), mood=result.mood, model=chosen.version)
 
     return PredictResponse(
         mood=result.mood,
@@ -53,6 +64,6 @@ def predict(
         explanation=None
         if result.explanation is None
         else [TokenWeight(token=t, weight=w) for t, w in result.explanation],
-        model_version=model.version,
+        model_version=chosen.version,
         warnings=non_english_warnings(text),
     )
