@@ -18,12 +18,17 @@ pipeline, not the model quality.
 3. Cells:
 
        from google.colab import drive; drive.mount('/content/drive')
-       !git clone https://github.com/<you>/LyricsMoodPredictor && cd LyricsMoodPredictor
-       %cd LyricsMoodPredictor
+       !git clone https://github.com/evelindsayyy/lyrics_mood_predictor.git
+       %cd lyrics_mood_predictor
        !pip install -q -r training/requirements-train.txt
        !python training/finetune_distilbert.py \
            --data /content/drive/MyDrive/songs_labeled.csv \
            --out /content/drive/MyDrive/lyricmood_transformer
+
+   If the repo is private, cloning needs a token — simpler alternative: skip
+   the clone, upload `training/finetune_distilbert.py` and `src/classify.py`
+   to Colab's file panel preserving the `training/`+`src/` layout, and run
+   the same command from `/content`.
 
 4. When it finishes, download the four files from
    `Drive/lyricmood_transformer/` (`model.onnx`, `tokenizer.json`,
