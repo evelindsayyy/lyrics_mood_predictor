@@ -10,3 +10,5 @@ pandas>=2.0
 numpy>=1.24
 shap>=0.44
 matplotlib>=3.7
+onnxruntime>=1.17
+tokenizers>=0.15

@@ -74,3 +74,61 @@ class FakeRetrieval:
 
     def ping(self):
         return self._ok
+
+
+def build_tiny_onnx(vocab_size: int, n_labels: int, out_path):
+    """Hand-built ONNX graph with the real serving I/O contract:
+    Gather(embedding, input_ids) -> ReduceMean(axis=1) -> logits.
+    attention_mask is a declared (unused) input so the serving code's feed
+    dict matches a real DistilBERT export."""
+    import numpy as np
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
+
+    rng = np.random.default_rng(42)
+    emb = rng.normal(scale=0.5, size=(vocab_size, n_labels)).astype(np.float32)
+
+    graph = helper.make_graph(
+        nodes=[
+            helper.make_node("Gather", ["emb", "input_ids"], ["tok_emb"]),
+            helper.make_node("ReduceMean", ["tok_emb"], ["logits"], axes=[1], keepdims=0),
+        ],
+        name="tiny_mood",
+        inputs=[
+            helper.make_tensor_value_info("input_ids", TensorProto.INT64, ["batch", "seq"]),
+            helper.make_tensor_value_info("attention_mask", TensorProto.INT64, ["batch", "seq"]),
+        ],
+        outputs=[helper.make_tensor_value_info("logits", TensorProto.FLOAT, ["batch", n_labels])],
+        initializer=[numpy_helper.from_array(emb, name="emb")],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+    onnx.checker.check_model(model)
+    onnx.save(model, str(out_path))
+
+
+@pytest.fixture(scope="session")
+def tiny_onnx_dir(tmp_path_factory):
+    """models/transformer-shaped artifact dir: model.onnx + tokenizer.json + labels.json."""
+    import json
+
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+    from tokenizers.trainers import WordLevelTrainer
+
+    d = tmp_path_factory.mktemp("tiny_transformer")
+
+    tok = Tokenizer(WordLevel(unk_token="[UNK]"))
+    tok.pre_tokenizer = Whitespace()
+    tok.train_from_iterator(
+        [t for t, _ in TINY_SONGS], WordLevelTrainer(special_tokens=["[PAD]", "[UNK]"])
+    )
+    tok.enable_padding(pad_id=0, pad_token="[PAD]")
+    tok.enable_truncation(max_length=32)
+    tok.save(str(d / "tokenizer.json"))
+
+    labels = ["Angry", "Calm", "Hype", "Romantic", "Sad"]
+    (d / "labels.json").write_text(json.dumps(labels))
+
+    build_tiny_onnx(vocab_size=tok.get_vocab_size(), n_labels=len(labels), out_path=d / "model.onnx")
+    return d
