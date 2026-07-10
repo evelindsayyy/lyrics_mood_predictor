@@ -23,5 +23,6 @@ class Settings(BaseSettings):
     labeled_songs_path: Path = Path("data/processed/songs_labeled.csv")
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "songs"
+    registry_path: Path = Path("models/registry.json")
     shap_background_size: int = 500
     max_lyrics_chars: int = 10_000
