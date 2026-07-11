@@ -65,3 +65,12 @@ def test_committed_registry_is_loadable():
     reg = load_registry(__import__("pathlib").Path("models/registry.json"))
     assert reg.default == "transformer"  # promoted 2026-07-10 after beating baseline on the frozen split
     assert "baseline" in reg.models
+
+
+def test_load_registry_unknown_kind(tmp_path):
+    from api.services.model import ArtifactError
+    from api.services.registry import load_registry
+
+    bad = {"default": "m", "models": {"m": {"kind": "quantum", "version": "v"}}}
+    with pytest.raises(ArtifactError, match="kind"):
+        load_registry(_write(tmp_path, bad))

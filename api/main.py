@@ -36,13 +36,20 @@ def _lyrics_store_consistent(retrieval: RetrievalClient, store: LyricsStore) -> 
     served against a stale index silently returns the wrong lyrics. This guards
     that skew. On any count() failure the collection size is unknown, so we
     return True (don't disable the store on transient errors).
+
+    Calls retrieval.count() at most once and logs the lyrics_index_skew
+    warning itself on mismatch — callers only need the returned bool.
     """
     try:
         collection_points = retrieval.count()
     except Exception:
         logger.debug("lyrics_index_count_unavailable")
         return True
-    return len(store) == collection_points
+    store_rows = len(store)
+    consistent = store_rows == collection_points
+    if not consistent:
+        logger.warning("lyrics_index_skew", store_rows=store_rows, collection_points=collection_points)
+    return consistent
 
 
 def create_app(
@@ -102,11 +109,6 @@ def create_app(
             and app.state.retrieval.ping()
             and not _lyrics_store_consistent(app.state.retrieval, app.state.lyrics_store)
         ):
-            logger.warning(
-                "lyrics_index_skew",
-                store_rows=len(app.state.lyrics_store),
-                collection_points=app.state.retrieval.count(),
-            )
             app.state.lyrics_store = None
         yield
 

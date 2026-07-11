@@ -198,7 +198,7 @@ def tiny_embedder_dir(tmp_path_factory):
 
 
 class FakeEmbedder:
-    """Deterministic text->vector fake for route tests."""
+    """Deterministic within a process (hash-seeded)."""
 
     def __init__(self, dim: int = 8):
         self._dim = dim

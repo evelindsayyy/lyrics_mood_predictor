@@ -66,7 +66,7 @@ class TransformerMoodModel:
         return PredictionResult(
             mood=self._labels[idx],
             confidence=float(probs[idx]),
-            probabilities={l: float(p) for l, p in zip(self._labels, probs)},
+            probabilities={label: float(p) for label, p in zip(self._labels, probs)},
             explanation=explanation,
         )
 

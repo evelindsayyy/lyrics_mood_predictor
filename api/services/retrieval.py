@@ -104,6 +104,8 @@ class QdrantRetrieval:
             with_payload=True,
         )
         if points:
+            # Unfloored on purpose: MatchText already coarse-filtered these
+            # candidates, so the ratio here is just a display/ranking score.
             scored = [
                 _hit_from_payload(p.payload, _title_ratio(title, str(p.payload["title"])))
                 for p in points

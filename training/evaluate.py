@@ -18,7 +18,6 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
@@ -119,6 +118,8 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--no-mlflow", action="store_true")
     args = parser.parse_args(argv)
+    if args.limit is not None and args.limit <= 0:
+        parser.error("--limit must be positive")
 
     from api.config import Settings
     from api.services.model import load_baseline

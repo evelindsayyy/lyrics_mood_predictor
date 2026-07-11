@@ -54,6 +54,8 @@ def search(
     embedder=Depends(get_embedder),
     retrieval=Depends(get_retrieval),
 ) -> SearchResponse:
+    if not q.strip():
+        raise ApiError(400, "empty_query", "q must contain non-whitespace text")
     _validate_mood(mood)
     response = _run_query(q, mood, limit, embedder, retrieval)
     logger.info("search", query_chars=len(q), n_results=len(response.results))

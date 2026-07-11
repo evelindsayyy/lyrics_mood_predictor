@@ -83,3 +83,9 @@ def test_similar_mood_filter_and_limit():
     body = r.json()
     assert len(body["results"]) == 1
     assert body["results"][0]["mood"] == "Hype"
+
+
+def test_search_whitespace_only_q_400():
+    r = _client().get("/v1/search?q=%20%20%20%20")
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "empty_query"

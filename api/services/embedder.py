@@ -44,6 +44,8 @@ class OnnxEmbedder:
         self._max_len = max_len
 
     def embed(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            raise ValueError("texts must be non-empty")
         encodings = self._tokenizer.encode_batch(list(texts))
         max_len = min(self._max_len, max(max(len(e.ids) for e in encodings), 1))
         ids = np.zeros((len(encodings), max_len), dtype=np.int64)

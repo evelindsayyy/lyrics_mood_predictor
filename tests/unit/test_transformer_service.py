@@ -30,8 +30,8 @@ def test_predict_returns_prediction_result(tiny_onnx_dir):
 
 def test_predict_is_deterministic(tiny_onnx_dir):
     m = _load(tiny_onnx_dir)
-    a = m.predict("rain empty street coat chair alone")
-    b = m.predict("rain empty street coat chair alone")
+    a = m.predict("rain empty street coat chair alone", explain=False)
+    b = m.predict("rain empty street coat chair alone", explain=False)
     assert a.mood == b.mood and a.confidence == b.confidence
 
 

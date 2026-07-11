@@ -54,3 +54,9 @@ def test_load_embedder_missing_file(tmp_path):
     with pytest.raises(ArtifactError) as exc:
         load_embedder(tmp_path)
     assert "model.onnx" in str(exc.value)
+
+
+def test_embed_empty_list_raises(tiny_embedder_dir):
+    e = _load(tiny_embedder_dir)
+    with pytest.raises(ValueError, match="non-empty"):
+        e.embed([])

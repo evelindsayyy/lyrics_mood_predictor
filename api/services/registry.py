@@ -35,15 +35,17 @@ def load_registry(path: Path) -> Registry:
         raise ArtifactError(f"model registry missing: {path}")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-        models = {
-            name: ModelSpec(
+        models: dict[str, ModelSpec] = {}
+        for name, spec in raw["models"].items():
+            built = ModelSpec(
                 name=name,
                 kind=spec["kind"],
                 version=spec["version"],
                 dir=Path(spec["dir"]) if "dir" in spec else None,
             )
-            for name, spec in raw["models"].items()
-        }
+            if built.kind not in ("baseline", "onnx"):
+                raise ArtifactError(f"model registry unknown kind {built.kind!r}: {path}")
+            models[name] = built
         default = raw["default"]
     except (KeyError, TypeError, ValueError) as exc:
         raise ArtifactError(f"model registry unreadable: {path} ({exc})") from exc

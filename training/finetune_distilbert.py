@@ -46,7 +46,7 @@ def load_splits(data_path: str):
 def class_weights(y: pd.Series, labels: list[str]) -> np.ndarray:
     counts = y.value_counts()
     n, k = len(y), len(labels)
-    return np.array([n / (k * counts[l]) for l in labels], dtype=np.float32)
+    return np.array([n / (k * counts[label]) for label in labels], dtype=np.float32)
 
 
 def main(argv=None) -> int:
@@ -75,7 +75,7 @@ def main(argv=None) -> int:
         args.epochs, args.batch_size = 1, 8
 
     labels = sorted(train_df["mood"].unique())
-    label_to_id = {l: i for i, l in enumerate(labels)}
+    label_to_id = {label: i for i, label in enumerate(labels)}
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     if args.smoke:
