@@ -26,14 +26,20 @@ pip install -r requirements.txt
 #    - run notebooks/02_modeling.ipynb to produce models/best_classifier.pkl + tfidf_vectorizer.pkl
 #    - run a one-liner to produce models/corpus_embeddings.npy
 
-# 3. run the app
+# 3. run the app — streamlit is a pure API client, so the api must be up too
+#    (see step 4; or run `uvicorn api.main:app --reload` and then this)
 streamlit run app/streamlit_app.py
 
-# 4. (new) run the REST API + vector DB
-docker compose up            # api on :8000, qdrant on :6333
-python scripts/index_corpus.py   # one-time corpus indexing
-curl -X POST localhost:8000/v1/predict -H 'content-type: application/json' \
-  -d '{"lyrics": "your lyrics here"}'
+# 4. run the full stack (api + vector db + web ui)
+docker compose up --build          # ui :8501, api :8000, qdrant :6333
+python scripts/index_corpus.py     # one-time corpus indexing
+python scripts/export_minilm_onnx.py  # one-time query-embedder export
+
+# then: open http://localhost:8501, or hit the API directly —
+curl -X POST localhost:8000/v1/predict -H 'content-type: application/json' -d '{"lyrics": "..."}'
+curl "localhost:8000/v1/search?q=rainy%20late%20night%20drive"
+curl -X POST localhost:8000/v1/similar -H 'content-type: application/json' -d '{"lyrics": "...", "limit": 5}'
+curl "localhost:8000/v1/songs?title=midnight"
 ```
 
 Full step-by-step setup is in [SETUP.md](SETUP.md).

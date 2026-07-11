@@ -27,6 +27,20 @@ Below is an honest breakdown of where AI help was material vs. where I wrote thi
 - **`api/`** (`config.py`, `schemas.py`, `errors.py`, `logging_setup.py`, `deps.py`, `main.py`, `routes/`, `services/`) — the FastAPI service: settings, request/response schemas, the `{"error": {code, message}}` contract, logging setup that never logs raw lyrics, dependency injection, the `create_app()` factory, health/predict routes, and the model/retrieval service wrappers.
 - **`scripts/index_corpus.py`** — the one-time/idempotent script that populates the Qdrant collection from the processed corpus.
 
+### Week-3: real query endpoints, rate limiting, metrics, and the streamlit rewrite
+
+**Written by Claude based on my design spec** ([docs/superpowers/plans/2026-07-10-week3-real-queries.md](docs/superpowers/plans/2026-07-10-week3-real-queries.md)). I specified the contracts and the constraints; Claude implemented them and worked through the FastAPI/slowapi/qdrant version-compatibility issues that came up along the way. I reviewed and tested every file, including running the full suite (100 tests) and smoke-testing `/v1/search`, `/v1/similar`, `/v1/songs`, `/metrics`, and the three-container Docker Compose stack (ui + api + qdrant) end-to-end:
+
+- **`scripts/export_minilm_onnx.py`** — the one-time export of `all-MiniLM-L6-v2` to ONNX, with a parity check against the original sentence-transformers model before the export is trusted for serving.
+- **`api/services/embedder.py`** — the torch-free ONNX query embedder (`Embedder` protocol), reimplementing masked mean-pooling + L2 normalization in numpy so query vectors land in the same space as the corpus embeddings.
+- **`api/services/retrieval.py`** (search + `find_song`) — vector search and fuzzy title/artist lookup against Qdrant.
+- **`api/services/songs.py`** (`LyricsStore`) — the lyrics lookup keyed by the indexer's `song_id`, backing `GET /v1/songs`.
+- **`api/ratelimit.py`** — I specified 30 req/min/IP with 429 + `Retry-After`; Claude implemented it, and when slowapi's own middleware turned out unable to resolve routes registered through FastAPI's included-router wrapper (silently enforcing nothing), Claude diagnosed it and wrote `RateLimitMiddleware` as a working replacement over the same `slowapi.Limiter`.
+- **`api/metrics.py`** — the Prometheus `/metrics` endpoint and request instrumentation, with the same included-router quirk worked around so route-template labels stay correct instead of collapsing to the un-prefixed path.
+- **`app/streamlit_app.py`** — rewritten from a monolithic model-loading app into a pure API client (zero ML imports) that talks to the API over HTTP via `LYRICMOOD_API_URL`, with a `ui` Docker service added alongside `api` and `qdrant`. I directed the pivot to the client/server split; Claude wrote the rewrite and the `docker/Dockerfile.ui` container.
+
+I also caught and had Claude fix an honesty issue from a prior review: `requirements-api.txt` pinned `qdrant-client>=1.9`, but `api/services/retrieval.py` calls `query_points`, which needs client `>=1.10` — the floor is now `>=1.10`.
+
 ## Transformer training + multi-model serving — `training/` and `api/services/{registry,transformer}.py`
 
 **Written by Claude based on my design spec** ([docs/superpowers/specs/2026-07-09-industrial-elevation-design.md](docs/superpowers/specs/2026-07-09-industrial-elevation-design.md), §3.2). I specified the fine-tuning recipe (`distilbert-base-uncased`, max_len 256, 2-3 epochs, class-weighted loss, early stopping on val macro F1), the identical-split discipline with the notebooks (`random_state=42`), the int8 dynamic ONNX quantization export, the `--smoke` mode for a fast CPU-only pipeline check, the eval harness contract (frozen test split, quality gate vs. majority-class baseline, markdown report), and the registry-driven multi-model serving design (`models/registry.json` pins loaded models + default, `?model=` query param selects per-request). Claude implemented them; I ran the `--smoke` check and the `--model baseline` eval end-to-end to verify both work before this runbook was written:

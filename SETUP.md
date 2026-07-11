@@ -69,6 +69,16 @@ embed_corpus(load_embedding_model(), raw.tolist())
 
 This produces `models/corpus_embeddings.npy` (~112MB, 76k × 384-d float32, L2-normalized). Takes ~8–15 min on CPU; much faster with an Apple Silicon GPU.
 
+## 5b. Export the query embedder (needed for the API's `/v1/search`, `/v1/similar`, `/v1/songs`)
+
+The API embeds incoming queries with an ONNX export of the same `all-MiniLM-L6-v2` model, so query vectors land in the same space as the corpus embeddings above. This is a one-time, torch-required step (run locally, not in the API container):
+
+```bash
+python scripts/export_minilm_onnx.py
+```
+
+This produces `models/embedder/model.onnx` and `models/embedder/tokenizer.json`, after verifying parity against the original sentence-transformers model on a handful of test sentences.
+
 ## 6. Run the app
 
 ```bash
@@ -96,5 +106,6 @@ pip install -r requirements.txt
 jupyter nbconvert --to notebook --execute --inplace notebooks/01_eda.ipynb
 jupyter nbconvert --to notebook --execute --inplace notebooks/02_modeling.ipynb
 python -c "import re, pandas as pd; from src.recommend import load_embedding_model, embed_corpus; df=pd.read_csv('data/processed/songs_labeled.csv'); raw=df['lyrics'].map(lambda t: re.sub(r'\[[^\]]*\]',' ',t) if isinstance(t,str) else ''); embed_corpus(load_embedding_model(), raw.tolist())"
-streamlit run app/streamlit_app.py
+python scripts/export_minilm_onnx.py
+docker compose up --build   # or: uvicorn api.main:app --reload  &&  streamlit run app/streamlit_app.py
 ```
