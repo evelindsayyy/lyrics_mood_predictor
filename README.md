@@ -232,4 +232,3 @@ LyricsMoodPredictor/
 ├── README.md SETUP.md ATTRIBUTION.md CLAUDE.md
 └── requirements*.txt             # runtime (api/ui), dev, and train deps
 ```
-</content>

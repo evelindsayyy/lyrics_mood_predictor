@@ -93,7 +93,11 @@ def _copy_models(settings: Settings, out_models: Path) -> None:
     registry = json.loads(settings.registry_path.read_text(encoding="utf-8"))
     for spec in registry.get("models", {}).values():
         if "dir" in spec:
-            spec["dir"] = str(out_models / Path(spec["dir"]).name)
+            # Always the fixed in-container path, never out_models: the
+            # Dockerfile COPYs this bundle to demo/ regardless of the local
+            # --out used to build it, so baking in --out (e.g. /tmp/demo)
+            # would point the registry outside the container's demo/ layout.
+            spec["dir"] = (Path("demo/models") / Path(spec["dir"]).name).as_posix()
     (out_models / "registry.json").write_text(
         json.dumps(registry, indent=2) + "\n", encoding="utf-8"
     )

@@ -157,5 +157,3 @@ Paste the Space URL into the live-demo line at the top of the project
 ```
 
 Commit that change to the project repo. Done.
-</content>
-</invoke>
