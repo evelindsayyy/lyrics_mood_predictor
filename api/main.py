@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from api.config import Settings
 from api.errors import register_exception_handlers
 from api.logging_setup import configure_logging, request_id_middleware
-from api.routes import health, predict, search
+from api.routes import health, predict, search, songs
 from api.services.embedder import Embedder, load_embedder
 from api.services.model import ArtifactError, MoodModel, load_baseline
 from api.services.registry import load_registry
@@ -94,6 +94,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(predict.router, prefix="/v1")
     app.include_router(search.router, prefix="/v1")
+    app.include_router(songs.router, prefix="/v1")
     return app
 
 

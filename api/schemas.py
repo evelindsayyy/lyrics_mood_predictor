@@ -44,3 +44,17 @@ class SimilarRequest(BaseModel):
     lyrics: str = Field(max_length=10_000)
     mood: str | None = None
     limit: int = Field(5, ge=1, le=20)
+
+
+class SongAnalysis(BaseModel):
+    mood: str
+    confidence: float
+    probabilities: dict[str, float]
+    model_version: str
+
+
+class SongsResponse(BaseModel):
+    match: SongResult | None
+    analysis: SongAnalysis | None
+    similar: list[SongResult]
+    candidates: list[SongResult]
