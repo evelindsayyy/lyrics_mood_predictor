@@ -80,6 +80,27 @@ def test_embedder_absent_still_analyzes():
     assert body["similar"] == []
 
 
+def test_similar_search_failure_degrades_not_503():
+    class SearchExplodes(FakeRetrieval):
+        def search(self, vector, limit=10, mood=None):
+            raise RuntimeError("qdrant hiccup mid-request")
+
+    from api.main import create_app
+
+    app = create_app(
+        models={"baseline": FakeMoodModel(mood="Sad", confidence=0.7)},
+        default="baseline",
+        retrieval=SearchExplodes(find_hits=ONE),
+        embedder=FakeEmbedder(),
+        lyrics_store=LyricsStore(["rain empty street lyrics"]),
+    )
+    r = TestClient(app, raise_server_exceptions=False).get("/v1/songs?title=Midnight Rain")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["analysis"]["mood"] == "Sad"
+    assert body["similar"] == []
+
+
 def test_retrieval_down_503():
     from api.main import create_app
 

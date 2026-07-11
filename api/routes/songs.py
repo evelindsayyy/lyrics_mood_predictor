@@ -9,7 +9,7 @@ AI attribution: implementation by Claude (Anthropic) based on my specification
 """
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 
 from api.deps import get_default_model_name, get_embedder, get_lyrics_store, get_models, get_retrieval
 from api.errors import ApiError
@@ -22,7 +22,6 @@ logger = structlog.get_logger()
 
 @router.get("/songs", response_model=SongsResponse)
 def songs(
-    request: Request,
     title: str = Query(min_length=2, max_length=200),
     artist: str | None = Query(None, max_length=200),
     retrieval=Depends(get_retrieval),
