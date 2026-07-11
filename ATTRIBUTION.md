@@ -52,6 +52,20 @@ I also caught and had Claude fix an honesty issue from a prior review: `requirem
 
 The actual Colab fine-tune run, the transformer-vs-baseline comparison, and the registry promotion decision are mine to make (see [training/README.md](training/README.md)) — not yet done as of this commit.
 
+## Week-4: CI, single-container demo, deploy runbook
+
+**Written by Claude based on my design spec** ([docs/superpowers/plans/2026-07-11-week4-ship-it.md](docs/superpowers/plans/2026-07-11-week4-ship-it.md), tracing the Week-4 row of [the elevation spec](docs/superpowers/specs/2026-07-09-industrial-elevation-design.md)). I specified the deliverables and the hard constraints — free-tier only, tests stay artifact-free and network-free, `requirements-api.txt` gains nothing, full lyrics never enter any public artifact (excerpts ≤300 chars only), and the demo's degraded-mode `/v1/songs` 503 must be a documented design choice, not a regression. Claude implemented them; I reviewed and ran the full suite (106 tests), the ruff lint, and the single-container demo image locally end-to-end before this runbook was written:
+
+- **`.github/workflows/ci.yml`** — lint (`ruff check .`, pinned to the locally-verified version), the pytest suite, and api/ui Docker builds, on every push to `main` and every PR. I specified the three-job shape and that CI must run on the artifact-free suite.
+- **`ruff.toml`** — the lint config; frozen notebooks are excluded so generated cell IDs don't trip the linter.
+- **`scripts/build_demo_bundle.py`** — assembles the `demo/` bundle (model artifacts + a file-based local-path Qdrant with excerpt-only payloads). I specified the excerpt-only constraint, the registry-dir rewrite (so the transformer path resolves inside the container), and that it must reuse the cached `corpus_embeddings.npy` and never re-embed. It reuses the indexer's functions directly.
+- **`docker/Dockerfile.spaces`** + **`docker/spaces_launcher.sh`** — the single-container image (uvicorn :8000 + Streamlit :7860 in one process supervisor) with every `LYRICMOOD_*` artifact path pointed at the in-bundle copies; `labeled_songs_path` is left absent on purpose so the lyrics store degrades.
+- **`api/config.py` / `api/services/retrieval.py` / `api/main.py`** — the additive `qdrant_path` setting and `QdrantRetrieval.local()` that switch retrieval to serverless local-path Qdrant when the path is set. I specified that this be additive — no existing contract, route, or settings name changes.
+- **Deferred-minors cleanup** — the small week 1–3 fixes I had flagged for later (empty-embed guard, registry `kind` validation, whitespace-only search-query guard, `--limit` validation, E741 renames) with their tests; no public contract changed.
+- **`docs/DEPLOY_SPACES.md`** and the **`README.md` rewrite** (architecture diagram, API table, the "class project → production system" timeline) — drafted by Claude from my notes and the verified repo state; I edited, validated, and own the content. The LLM-assisted relabeling idea is documented as future work.
+
+The Colab fine-tune, the Space deployment itself, and filling the README's live-demo URL are mine to do (post-deploy) — the runbook exists so I can.
+
 ## Streamlit app — `app/streamlit_app.py`
 
 **Written by Claude based on my visual design.** I created the design upfront — `docs/design/LyricMood Minimal.html` (the visual mock), `app/static/lyricmood.css` (the design tokens and component styles), and `docs/design/DESIGN_HANDOFF.md` (the spec doc) — and gave that to Claude as input. Claude wrote the Python implementation and the CSS overrides that re-skin Streamlit's built-in widgets to match (chipbar layout, raw-HTML SHAP horizontal bar chart, song-list grid, `set_mood_accent()` helper for swapping the active mood color). I integrated, tested, iterated, and own the `@st.cache_resource` data-loading strategy and the prediction → SHAP → retrieval data flow.

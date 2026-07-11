@@ -1,57 +1,91 @@
 # LyricMood
 
-A small web app that reads song lyrics, predicts the mood, explains *why*, and surfaces 5 other songs with a similar emotional profile.
+[![ci](https://github.com/evelindsayyy/lyrics_mood_predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/evelindsayyy/lyrics_mood_predictor/actions/workflows/ci.yml)
+
+Paste song lyrics, get the mood — *and why* — plus five songs that feel the same. A two-model ML system (interpretable baseline + fine-tuned transformer) served behind one FastAPI, with a Streamlit UI as a thin client.
+
+**[Live demo →](PASTE_SPACE_URL_HERE)**
 
 ## What it Does
 
-LyricMood is a two-model system glued together by a Streamlit UI. You paste song lyrics into the web app and get three things back:
+LyricMood answers three kinds of query over a shared song corpus, all through one HTTP API:
 
-1. **A mood prediction** (one of *Hype, Romantic, Calm, Sad, Angry*) with a confidence score, produced by a logistic regression trained on TF-IDF features of ~76,000 labeled songs.
-2. **A word-level explanation** of that prediction (interpretability via SHAP), pulling the top-10 words that pushed the model toward (or away from) the predicted mood — so the model isn't a black box.
-3. **Five similar songs**, found by embedding the lyrics with a frozen MiniLM sentence-transformer and ranking the corpus by cosine similarity (filtered to the predicted mood).
+1. **Predict a mood from pasted lyrics** — one of *Hype, Romantic, Calm, Sad, Angry*, with a confidence score and a **word-level SHAP explanation** (the top words that pushed the model toward, or away from, its call), so the model isn't a black box.
+2. **Search the corpus by free-text vibe** — e.g. `rainy late night drive` — and get back the songs whose lyrics sit closest in embedding space.
+3. **Find similar songs** — paste lyrics (or look one up by title) and get five songs with a matching emotional profile.
 
-Labels come from Spotify's audio features (valence + energy, cut into mood regions based on [Russell's circumplex model](#research-connections)), so the model is learning which lyrical patterns tend to go with which audio-derived moods.
+Two models serve the mood prediction behind the same endpoint, selectable per request: a **TF-IDF + logistic-regression baseline** (fast, exactly explainable) and a **fine-tuned DistilBERT** exported to int8 ONNX (higher accuracy, torch-free serving). The **Streamlit UI is a pure API client** — zero ML imports; it just renders what the API returns.
+
+Mood labels are derived, not annotated: they come from Spotify's audio features (valence + energy, cut into regions of [Russell's circumplex model](#research-connections)), so the model learns which lyrical patterns go with which audio-derived moods.
+
+## Architecture
+
+Two lanes: an **offline** lane that trains models and indexes the corpus, and an **online** serving lane that answers queries. Everything served is **torch-free** — the transformer and the query embedder both run on `onnxruntime` (CPU), so the API image stays small.
+
+```
+  OFFLINE (train + index)                     ONLINE (serve)
+  ─────────────────────────                   ─────────────────────────────────
+
+  notebooks/ + Colab                          browser
+    │  TF-IDF+LR, DistilBERT                     │  http
+    │  fine-tune (T4)                            ▼
+    ▼                                          ui  ── Streamlit :8501 (pure API client)
+  artifacts                                       │  LYRICMOOD_API_URL
+    ├─ best_classifier.pkl                        ▼
+    ├─ tfidf_vectorizer.pkl                    api ── FastAPI :8000
+    ├─ transformer/  (ONNX int8)                  │   ├─ registry.json → baseline | transformer
+    ├─ embedder/     (ONNX MiniLM,                │   │      (?model= selects per request)
+    │                 parity-checked)             │   ├─ query embedder (ONNX MiniLM, torch-free)
+    └─ corpus_embeddings.npy                      │   ├─ SHAP explain (baseline: exact LinearExplainer)
+         │                                        ▼   └─ rate limit + /metrics + error envelope
+         ▼  scripts/index_corpus.py            qdrant ── vector search :6333
+       qdrant collection ◄───────────────────────┘   (excerpt payloads, mood filter)
+```
+
+- **`models/registry.json`** pins which models are loaded and which is default; `POST /v1/predict?model=baseline|transformer` picks one per request (`400 unknown_model` / `503 model_unavailable`).
+- The **query embedder** is a parity-checked ONNX export of `all-MiniLM-L6-v2` — masked mean-pooling + L2-normalization reimplemented in numpy so query vectors land in the same space as the corpus embeddings (checked against the original sentence-transformers model before it's trusted).
+- The API never logs raw lyrics; every error is a `{"error": {code, message}}` envelope.
+
+Deeper rationale for the two-pipeline split is in [`docs/architecture.md`](docs/architecture.md); the full industrial-elevation design is in [`docs/superpowers/specs/2026-07-09-industrial-elevation-design.md`](docs/superpowers/specs/2026-07-09-industrial-elevation-design.md).
+
+## API
+
+All endpoints are under `/v1` except `/health` and `/metrics`. Error responses use `{"error": {code, message}}`.
+
+| endpoint | what it does | example |
+|---|---|---|
+| `POST /v1/predict` | lyrics → mood + confidence + SHAP words (`?model=baseline\|transformer`) | `curl -X POST localhost:8000/v1/predict -H 'content-type: application/json' -d '{"lyrics": "..."}'` |
+| `GET /v1/search` | free-text vibe → ranked songs | `curl "localhost:8000/v1/search?q=rainy%20late%20night%20drive"` |
+| `POST /v1/similar` | lyrics → 5 similar songs (mood-filtered) | `curl -X POST localhost:8000/v1/similar -H 'content-type: application/json' -d '{"lyrics": "...", "limit": 5}'` |
+| `GET /v1/songs` | title/artist lookup → full mood analysis + similar (or candidate list on ambiguous match) | `curl "localhost:8000/v1/songs?title=midnight"` |
+| `GET /health` | liveness / readiness | `curl localhost:8000/health` |
+| `GET /metrics` | Prometheus counters + histograms per route | `curl localhost:8000/metrics` |
+
+Rate limiting is 30 req/min/IP (`429` + `Retry-After`); `/health` and `/metrics` are exempt.
 
 ## Quick Start
 
 ```bash
 # 1. env
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt      # api + test deps (the ui runs in its own container)
 
-# 2. get the dataset and the processed corpus (see SETUP.md for full details)
-#    - download SpotGenTrack → SpotGenTrack/Data Sources/spotify_tracks.csv
-#    - run notebooks/01_eda.ipynb to produce data/processed/songs_labeled.csv
-#    - run notebooks/02_modeling.ipynb to produce models/best_classifier.pkl + tfidf_vectorizer.pkl
-#    - run a one-liner to produce models/corpus_embeddings.npy
+# 2. artifacts (see SETUP.md for the full walkthrough)
+#    - download SpotGenTrack, run notebooks/01_eda.ipynb → data/processed/songs_labeled.csv
+#    - run notebooks/02_modeling.ipynb → models/best_classifier.pkl + tfidf_vectorizer.pkl
+#    - one-liner (SETUP.md step 5) → models/corpus_embeddings.npy
+#    - python scripts/export_minilm_onnx.py → models/embedder/  (query embedder)
 
-# 3. run the app — streamlit is a pure API client, so the api must be up too
-#    (see step 4; or run `uvicorn api.main:app --reload` and then this)
-streamlit run app/streamlit_app.py
-
-# 4. run the full stack (api + vector db + web ui)
+# 3. run the full stack (ui + api + vector db)
 docker compose up --build          # ui :8501, api :8000, qdrant :6333
-python scripts/index_corpus.py     # one-time corpus indexing
-python scripts/export_minilm_onnx.py  # one-time query-embedder export
+python scripts/index_corpus.py     # one-time corpus indexing into qdrant
 
-# then: open http://localhost:8501, or hit the API directly —
+# then open http://localhost:8501, or hit the API directly —
 curl -X POST localhost:8000/v1/predict -H 'content-type: application/json' -d '{"lyrics": "..."}'
 curl "localhost:8000/v1/search?q=rainy%20late%20night%20drive"
-curl -X POST localhost:8000/v1/similar -H 'content-type: application/json' -d '{"lyrics": "...", "limit": 5}'
-curl "localhost:8000/v1/songs?title=midnight"
 ```
 
-Full step-by-step setup is in [SETUP.md](SETUP.md).
-
-## Video Links
-
-Both videos are stored in this repository under [`videos/`](videos/) and also linked below for direct viewing.
-
-- **Project Demo** (3–5 min, non-technical): [`videos/demo.mp4`](videos/demo.mp4) · [YouTube](https://youtu.be/YAT78qsMW6o)
-- **Technical Walkthrough** (5–10 min): [`videos/walkthrough.mp4`](videos/walkthrough.mp4) · [YouTube](https://youtu.be/saAWmiuv8NY)
-
-> Before submission: record both videos, save them as `videos/demo.mp4` and `videos/walkthrough.mp4` in the repo, push, then replace each `PASTE_..._URL_HERE` placeholder with the public mirror link (YouTube unlisted / Loom / Google Drive / Vimeo).
+To run the API without Docker: `uvicorn api.main:app --reload` (needs local `models/` + a reachable Qdrant). Full step-by-step setup is in [SETUP.md](SETUP.md).
 
 ## Evaluation
 
@@ -103,6 +137,24 @@ The diagonal shows per-class recall. Brightest off-diagonal cells (Romantic→Hy
 
 Green bars = words pushing toward the predicted mood; red = pushing away. The model exposes its own reasoning, so a user can sanity-check whether a prediction is being driven by sensible vocabulary or noise.
 
+## From Class Project to Production System
+
+LyricMood started as a single-file Streamlit app that loaded pickles in-process. Over four one-week increments it became a service. Each step is a spec-driven change ([design spec](docs/superpowers/specs/2026-07-09-industrial-elevation-design.md), [weekly plans](docs/superpowers/plans/)):
+
+- **Start (class submission)** — notebooks (EDA → modeling → evaluation), a TF-IDF+LR baseline with exact SHAP, MiniLM cosine retrieval, and a Streamlit app that imported the models directly.
+- **Week 1 — API spine** ([plan](docs/superpowers/plans/2026-07-09-week1-api-spine.md)): extracted a dockerized FastAPI service (`POST /v1/predict`) with an error-envelope contract, health endpoint, structured logging that never logs raw lyrics, a test suite, and an idempotent Qdrant corpus indexer.
+- **Week 2 — transformer + multi-model serving** ([plan](docs/superpowers/plans/2026-07-10-week2-transformer.md)): fine-tuned DistilBERT on Colab, exported to int8 ONNX, and served it torch-free through the same `MoodModel` protocol — registry-driven so `?model=` swaps models per request — plus an eval harness with a quality gate against the majority-class baseline.
+- **Week 3 — real queries + UI as client** ([plan](docs/superpowers/plans/2026-07-10-week3-real-queries.md)): added `GET /v1/search`, `POST /v1/similar`, and `GET /v1/songs` backed by a parity-checked ONNX MiniLM query embedder; slowapi rate limiting; a Prometheus `/metrics` endpoint; and a Streamlit rewrite into a pure API client, giving a three-container Compose stack (ui + api + qdrant).
+- **Week 4 — ship it** ([plan](docs/superpowers/plans/2026-07-11-week4-ship-it.md)): CI on every push (lint + 106-test suite + Docker build), a single-container Hugging Face Spaces demo (API + UI + embedded file-based Qdrant, see [`docs/DEPLOY_SPACES.md`](docs/DEPLOY_SPACES.md)), and this README.
+- **Future work** — LLM-assisted relabeling to reduce the valence/energy label noise that currently caps accuracy: re-derive mood labels from the lyrics themselves instead of audio-feature thresholds, and re-measure both models on the cleaner labels.
+
+## Video Links
+
+Both videos are stored in this repository under [`videos/`](videos/) and also linked below for direct viewing.
+
+- **Project Demo** (3–5 min, non-technical): [`videos/demo.mp4`](videos/demo.mp4) · [YouTube](https://youtu.be/YAT78qsMW6o)
+- **Technical Walkthrough** (5–10 min): [`videos/walkthrough.mp4`](videos/walkthrough.mp4) · [YouTube](https://youtu.be/saAWmiuv8NY)
+
 ## Research Connections
 
 This project leans on three pieces of prior work:
@@ -130,39 +182,54 @@ AI-tool usage (Claude) is documented separately and in detail in [ATTRIBUTION.md
 Additional documentation lives in [`docs/`](docs/):
 
 - [`docs/architecture.md`](docs/architecture.md) — system architecture diagram and the rationale for the two-pipeline split (TF-IDF for classification, MiniLM for retrieval).
+- [`docs/DEPLOY_SPACES.md`](docs/DEPLOY_SPACES.md) — runbook for deploying the single-container demo to Hugging Face Spaces (free tier).
 - [`docs/rubric-mapping.md`](docs/rubric-mapping.md) — maps each ML rubric checkbox to the file or notebook section that earns it. Useful for a quick grading pass.
 - [`docs/findings.md`](docs/findings.md) — known limitations and data-quality artifacts (duplicate lyrics in SpotGenTrack, stand-up comedy in the Sad class, the non-Latin-script `clean_text` limitation).
+- [`docs/superpowers/`](docs/superpowers/) — the industrial-elevation design spec and the four weekly implementation plans.
 
 ## Repo Structure
 
 ```
 LyricsMoodPredictor/
-├── app/streamlit_app.py          # Streamlit UI
+├── app/streamlit_app.py          # Streamlit UI (pure API client, zero ML imports)
+├── api/                          # FastAPI service
+│   ├── main.py                   # create_app() factory, lifespan artifact loading
+│   ├── config.py schemas.py errors.py deps.py   # settings, DTOs, error envelope, DI
+│   ├── ratelimit.py metrics.py logging_setup.py # rate limiting, Prometheus, no-raw-lyrics logging
+│   ├── routes/                   # health, predict, search, songs
+│   └── services/                 # model, transformer, registry, embedder, retrieval, songs
 ├── src/
 │   ├── preprocess.py             # text cleaning, mood labels, gap-zone filter
 │   ├── features.py               # TF-IDF vectorizer (classification)
 │   ├── classify.py               # split + train + evaluate helpers
 │   ├── recommend.py              # MiniLM embeddings + cosine-sim retrieval
 │   └── explain.py                # SHAP LinearExplainer wrapper
+├── training/                     # transformer fine-tune + eval harness
+│   ├── finetune_distilbert.py    # Colab-targeted fine-tune → int8 ONNX
+│   └── evaluate.py               # frozen-split eval, quality gate, markdown report
+├── scripts/
+│   ├── index_corpus.py           # idempotent Qdrant corpus indexer
+│   ├── export_minilm_onnx.py     # parity-checked ONNX query-embedder export
+│   └── build_demo_bundle.py      # assemble the HF Spaces demo bundle (demo/)
 ├── notebooks/
 │   ├── 01_eda.ipynb              # EDA + preprocessing experiments
 │   ├── 02_modeling.ipynb         # baselines, sweep, best model
 │   └── 03_evaluation.ipynb       # error analysis, edge cases, iterations, objective metrics
+├── tests/                        # 106-test pytest suite (unit + api, artifact-free)
+├── docker/                       # Dockerfile.api, Dockerfile.ui, Dockerfile.spaces, spaces_launcher.sh
+├── .github/workflows/ci.yml      # lint + test + docker-build
 ├── docs/
 │   ├── architecture.md           # system architecture + design decisions
+│   ├── DEPLOY_SPACES.md          # HF Spaces deploy runbook
 │   ├── rubric-mapping.md         # rubric items → evidence locations
 │   ├── findings.md               # known limitations + data-quality findings
+│   ├── superpowers/              # design spec + weekly implementation plans
 │   └── design/                   # frontend visual mock + design handoff
-│       ├── LyricMood Minimal.html
-│       └── DESIGN_HANDOFF.md
-├── videos/
-│   ├── demo.mp4                  # 3–5 min non-technical demo
-│   └── walkthrough.mp4           # 5–10 min technical walkthrough
+├── videos/                       # demo.mp4 + walkthrough.mp4
 ├── data/processed/               # generated (songs_labeled.csv, gitignored)
-├── models/                       # generated (pickles + embeddings, gitignored)
-├── results/                      # generated figures + tables
-├── README.md                     # this file
-├── SETUP.md                      # install + data download
-├── ATTRIBUTION.md                # AI-tool + library + dataset usage
-└── requirements.txt              # pip dependencies
+├── models/                       # generated (pickles, ONNX, embeddings, registry.json; gitignored)
+├── results/                      # generated figures + eval reports
+├── README.md SETUP.md ATTRIBUTION.md CLAUDE.md
+└── requirements*.txt             # runtime (api/ui), dev, and train deps
 ```
+</content>
