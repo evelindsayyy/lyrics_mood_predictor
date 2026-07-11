@@ -16,10 +16,12 @@ from fastapi import FastAPI
 from api.config import Settings
 from api.errors import register_exception_handlers
 from api.logging_setup import configure_logging, request_id_middleware
-from api.routes import health, predict
+from api.routes import health, predict, search
+from api.services.embedder import Embedder, load_embedder
 from api.services.model import ArtifactError, MoodModel, load_baseline
 from api.services.registry import load_registry
 from api.services.retrieval import QdrantRetrieval, RetrievalClient
+from api.services.songs import LyricsStore
 from api.services.transformer import load_transformer
 
 logger = structlog.get_logger()
@@ -30,6 +32,8 @@ def create_app(
     models: dict[str, MoodModel] | None = None,
     default: str | None = None,
     retrieval: RetrievalClient | None = None,
+    embedder: Embedder | None = None,
+    lyrics_store: LyricsStore | None = None,
 ) -> FastAPI:
     cfg = settings or Settings()
     configure_logging()
@@ -56,6 +60,18 @@ def create_app(
             app.state.registry_names = set(reg.models)
         if not hasattr(app.state, "retrieval"):
             app.state.retrieval = QdrantRetrieval(cfg.qdrant_url, cfg.qdrant_collection)
+        if not hasattr(app.state, "embedder"):
+            if cfg.embedder_dir.exists():
+                app.state.embedder = load_embedder(cfg.embedder_dir)
+            else:
+                logger.info("embedder_unavailable", dir=str(cfg.embedder_dir))
+                app.state.embedder = None
+        if not hasattr(app.state, "lyrics_store"):
+            if cfg.labeled_songs_path.exists():
+                app.state.lyrics_store = LyricsStore.from_csv(cfg.labeled_songs_path)
+            else:
+                logger.info("lyrics_unavailable", path=str(cfg.labeled_songs_path))
+                app.state.lyrics_store = None
         yield
 
     app = FastAPI(title="LyricMood API", version="1.0", lifespan=lifespan)
@@ -69,10 +85,15 @@ def create_app(
         app.state.registry_names = set(models)
     if retrieval is not None:
         app.state.retrieval = retrieval
+    if embedder is not None:
+        app.state.embedder = embedder
+    if lyrics_store is not None:
+        app.state.lyrics_store = lyrics_store
     app.middleware("http")(request_id_middleware)
     register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(predict.router, prefix="/v1")
+    app.include_router(search.router, prefix="/v1")
     return app
 
 

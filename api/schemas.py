@@ -24,3 +24,23 @@ class PredictResponse(BaseModel):
     explanation: list[TokenWeight] | None
     model_version: str
     warnings: list[str]
+
+
+class SongResult(BaseModel):
+    song_id: int
+    title: str
+    artist: str
+    mood: str
+    score: float
+
+
+class SearchResponse(BaseModel):
+    results: list[SongResult]
+    query_embedding_ms: float
+    total_ms: float
+
+
+class SimilarRequest(BaseModel):
+    lyrics: str = Field(max_length=10_000)
+    mood: str | None = None
+    limit: int = Field(5, ge=1, le=20)

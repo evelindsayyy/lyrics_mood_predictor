@@ -20,3 +20,11 @@ def get_default_model_name(request: Request) -> str:
 
 def get_retrieval(request: Request) -> RetrievalClient:
     return request.app.state.retrieval
+
+
+def get_embedder(request: Request):
+    return getattr(request.app.state, "embedder", None)
+
+
+def get_lyrics_store(request: Request):
+    return getattr(request.app.state, "lyrics_store", None)
