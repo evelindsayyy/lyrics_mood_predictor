@@ -23,8 +23,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-# /health is exempt now; the /metrics task adds its own path when it lands.
-DEFAULT_EXEMPT_PATHS: tuple[str, ...] = ("/health",)
+# /health and /metrics are exempt: both are unauthenticated operational
+# endpoints (liveness probe, Prometheus scrape) that must never be throttled.
+# The brief's `limiter.exempt(metrics_endpoint)` predates this custom
+# middleware (which exempts by exact path, not by endpoint), so /metrics is
+# added to the exempt path set here instead.
+DEFAULT_EXEMPT_PATHS: tuple[str, ...] = ("/health", "/metrics")
 
 
 def build_limiter(rate_limit: str) -> Limiter:

@@ -17,6 +17,7 @@ from slowapi.errors import RateLimitExceeded
 from api.config import Settings
 from api.errors import register_exception_handlers
 from api.logging_setup import configure_logging, request_id_middleware
+from api.metrics import metrics_endpoint, metrics_middleware
 from api.ratelimit import RateLimitMiddleware, build_limiter, rate_limit_handler
 from api.routes import health, predict, search, songs
 from api.services.embedder import Embedder, load_embedder
@@ -103,6 +104,19 @@ def create_app(
     # for why: FastAPI 0.139's _IncludedRouter breaks slowapi's route resolution.
     # /health is exempted by path via the middleware's default exempt set.
     app.add_middleware(RateLimitMiddleware)
+    # Middleware registration order note: Starlette's add_middleware/`app.middleware`
+    # each insert at the front of the stack, so the LAST registered runs OUTERMOST.
+    # Final registration order → request_id, rate-limit, metrics, which yields the
+    # runtime stack (outer→inner):
+    #   metrics → rate-limit → request_id → ExceptionMiddleware → router.
+    # metrics is outermost on purpose: it times the full stack and counts every
+    # response, including rate-limited 429s (labelled path="unmatched", since a
+    # 429 short-circuits before the router sets scope["route"]). Matched requests
+    # — including ApiError 400s turned into responses by ExceptionMiddleware — are
+    # counted with the route TEMPLATE because the shared scope dict carries
+    # scope["route"] back up after call_next.
+    app.middleware("http")(metrics_middleware)
+    app.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
     app.include_router(health.router)
     app.include_router(predict.router, prefix="/v1")
     app.include_router(search.router, prefix="/v1")
