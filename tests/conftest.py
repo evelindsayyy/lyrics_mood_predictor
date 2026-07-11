@@ -69,11 +69,24 @@ class FakeMoodModel:
 class FakeRetrieval:
     """Canned retrieval client for route tests."""
 
-    def __init__(self, ok=True):
+    def __init__(self, ok=True, hits=None, find_hits=None):
         self._ok = ok
+        self._hits = list(hits or [])
+        self._find_hits = list(find_hits or [])
 
     def ping(self):
         return self._ok
+
+    def search(self, vector, limit=10, mood=None):
+        if not self._ok:
+            raise RuntimeError("qdrant down")
+        out = [h for h in self._hits if mood is None or h.mood == mood]
+        return out[:limit]
+
+    def find_song(self, title, artist=None, limit=5):
+        if not self._ok:
+            raise RuntimeError("qdrant down")
+        return self._find_hits[:limit]
 
 
 def build_tiny_onnx(vocab_size: int, n_labels: int, out_path):

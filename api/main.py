@@ -55,7 +55,7 @@ def create_app(
             app.state.default_model = reg.default
             app.state.registry_names = set(reg.models)
         if not hasattr(app.state, "retrieval"):
-            app.state.retrieval = QdrantRetrieval(cfg.qdrant_url)
+            app.state.retrieval = QdrantRetrieval(cfg.qdrant_url, cfg.qdrant_collection)
         yield
 
     app = FastAPI(title="LyricMood API", version="1.0", lifespan=lifespan)
