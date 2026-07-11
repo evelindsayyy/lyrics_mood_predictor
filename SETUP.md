@@ -85,7 +85,7 @@ This produces `models/embedder/model.onnx` and `models/embedder/tokenizer.json`,
 streamlit run app/streamlit_app.py
 ```
 
-First query after cold start takes ~10s while the model, vectorizer, corpus embeddings, and MiniLM all load into memory. Subsequent queries are fast (cached via `@st.cache_resource`).
+The Streamlit app is now a pure HTTP client — it holds no ML code. It talks to the LyricMood API at `LYRICMOOD_API_URL` (default `http://localhost:8000`), so the API must be running first (`uvicorn api.main:app` or `docker compose up`). All heavy loading — the classifier, vectorizer, MiniLM embedder, and Qdrant connection — happens once in the API's startup (its lifespan), not in the UI. The first API request after a cold start pays that warm-up cost; the UI itself starts instantly.
 
 ## 7. (Optional) run the evaluation notebook
 

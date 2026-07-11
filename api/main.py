@@ -12,13 +12,12 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
-from slowapi.errors import RateLimitExceeded
 
 from api.config import Settings
 from api.errors import register_exception_handlers
 from api.logging_setup import configure_logging, request_id_middleware
 from api.metrics import metrics_endpoint, metrics_middleware
-from api.ratelimit import RateLimitMiddleware, build_limiter, rate_limit_handler
+from api.ratelimit import RateLimitMiddleware, build_limiter
 from api.routes import health, predict, search, songs
 from api.services.embedder import Embedder, load_embedder
 from api.services.model import ArtifactError, MoodModel, load_baseline
@@ -133,7 +132,9 @@ def create_app(
     # instance, so each app has its own counters (tests don't bleed).
     limiter = build_limiter(cfg.rate_limit)
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+    # No app-level RateLimitExceeded handler: RateLimitMiddleware catches the
+    # exception and builds the 429 itself (see api/ratelimit.py), so an
+    # app.add_exception_handler(RateLimitExceeded, ...) would be unreachable.
     # RateLimitMiddleware (not slowapi's SlowAPIMiddleware) — see api/ratelimit.py
     # for why: FastAPI 0.139's _IncludedRouter breaks slowapi's route resolution.
     # /health is exempted by path via the middleware's default exempt set.

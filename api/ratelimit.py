@@ -32,6 +32,14 @@ DEFAULT_EXEMPT_PATHS: tuple[str, ...] = ("/health", "/metrics")
 
 
 def build_limiter(rate_limit: str) -> Limiter:
+    # Validate the limit string at construction (fail fast at create_app, not on
+    # the first request). `limits` is a slowapi dependency, so the import is safe.
+    from limits import parse
+
+    try:
+        parse(rate_limit)
+    except Exception as exc:
+        raise ValueError(f"invalid rate limit {rate_limit!r}") from exc
     return Limiter(key_func=get_remote_address, default_limits=[rate_limit])
 
 

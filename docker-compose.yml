@@ -20,6 +20,11 @@ services:
     depends_on:
       - qdrant
 
+  # All UI users reach the api from the same container IP, so they share ONE
+  # per-IP rate-limit bucket (LYRICMOOD_RATE_LIMIT, default 30/min). Each
+  # analysis is ~2 API calls (/v1/predict + /v1/similar), so the default allows
+  # roughly 15 analyses/min across everyone behind this ui. For multi-user demos,
+  # raise LYRICMOOD_RATE_LIMIT on the api service above.
   ui:
     build:
       context: .
