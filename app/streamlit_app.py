@@ -33,6 +33,7 @@ plus the API-client wiring and error handling. I integrated, tested, and
 iterated on the result. See ../ATTRIBUTION.md for the full breakdown.
 """
 
+import html
 import math
 import os
 from pathlib import Path
@@ -476,10 +477,13 @@ if go_clicked:
         top10 = [(e["token"], e["weight"]) for e in (pred["explanation"] or [])]
 
         recs = []
-        sim_resp = client.post(
-            "/v1/similar", json={"lyrics": text, "mood": pred["mood"], "limit": 5}
-        )
-        if sim_resp.status_code == 200:
+        try:
+            sim_resp = client.post(
+                "/v1/similar", json={"lyrics": text, "mood": pred["mood"], "limit": 5}
+            )
+        except httpx.HTTPError:
+            sim_resp = None
+        if sim_resp is not None and sim_resp.status_code == 200:
             recs = [
                 {"title": r["title"], "artist": r["artist"], "similarity": r["score"]}
                 for r in sim_resp.json()["results"]
@@ -575,7 +579,7 @@ if result:
             sign = "+" if v >= 0 else "−"
             shap_rows.append(
                 f"""<div class="shap-row {sign_class}">
-                  <div class="w">{word}</div>
+                  <div class="w">{html.escape(word)}</div>
                   <div class="shap-track"><div class="shap-bar" style="left: {left:.2f}%; width: {pct_half:.2f}%;"></div></div>
                   <div class="v">{sign}{abs(v):.2f}</div>
                 </div>"""
@@ -631,8 +635,8 @@ if result:
                 f"""<div class="row">
                   <div class="n">{i+1:02d}</div>
                   <div>
-                    <div class="t">{r['title']}</div>
-                    <div class="a">{r['artist']}</div>
+                    <div class="t">{html.escape(r['title'])}</div>
+                    <div class="a">{html.escape(r['artist'])}</div>
                   </div>
                   <div class="s">{r['similarity']:.3f}</div>
                 </div>"""

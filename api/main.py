@@ -30,6 +30,22 @@ from api.services.transformer import load_transformer
 logger = structlog.get_logger()
 
 
+def _lyrics_store_consistent(retrieval: RetrievalClient, store: LyricsStore) -> bool:
+    """True if the lyrics store and the Qdrant collection agree on row count.
+
+    The song_id contract is row-position-at-index-time, so a regenerated CSV
+    served against a stale index silently returns the wrong lyrics. This guards
+    that skew. On any count() failure the collection size is unknown, so we
+    return True (don't disable the store on transient errors).
+    """
+    try:
+        collection_points = retrieval.count()
+    except Exception:
+        logger.debug("lyrics_index_count_unavailable")
+        return True
+    return len(store) == collection_points
+
+
 def create_app(
     settings: Settings | None = None,
     models: dict[str, MoodModel] | None = None,
@@ -75,6 +91,24 @@ def create_app(
             else:
                 logger.info("lyrics_unavailable", path=str(cfg.labeled_songs_path))
                 app.state.lyrics_store = None
+        # Skew guard, real path only (neither retrieval nor lyrics_store injected):
+        # if the in-memory lyrics store and the Qdrant collection disagree on row
+        # count, the song_id -> lyrics mapping is stale. Disable the store so the
+        # /v1/songs route degrades to its existing 503 rather than serving wrong
+        # lyrics. Skipped silently when the collection count is unknown.
+        if (
+            retrieval is None
+            and lyrics_store is None
+            and app.state.lyrics_store is not None
+            and app.state.retrieval.ping()
+            and not _lyrics_store_consistent(app.state.retrieval, app.state.lyrics_store)
+        ):
+            logger.warning(
+                "lyrics_index_skew",
+                store_rows=len(app.state.lyrics_store),
+                collection_points=app.state.retrieval.count(),
+            )
+            app.state.lyrics_store = None
         yield
 
     app = FastAPI(title="LyricMood API", version="1.0", lifespan=lifespan)

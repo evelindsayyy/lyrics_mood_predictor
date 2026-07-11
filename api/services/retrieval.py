@@ -38,6 +38,8 @@ class SongHit:
 class RetrievalClient(Protocol):
     def ping(self) -> bool: ...
 
+    def count(self) -> int: ...
+
     def search(self, vector, limit: int = 10, mood: str | None = None) -> list[SongHit]: ...
 
     def find_song(self, title: str, artist: str | None = None, limit: int = 5) -> list[SongHit]: ...
@@ -64,6 +66,9 @@ class QdrantRetrieval:
             return True
         except Exception:
             return False
+
+    def count(self) -> int:
+        return self._client.count(self._collection).count
 
     def search(self, vector, limit: int = 10, mood: str | None = None) -> list[SongHit]:
         flt = None

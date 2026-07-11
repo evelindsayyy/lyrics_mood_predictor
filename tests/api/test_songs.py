@@ -101,6 +101,26 @@ def test_similar_search_failure_degrades_not_503():
     assert body["similar"] == []
 
 
+def test_skew_check_disables_store(monkeypatch):
+    # simulate the lifespan's skew guard behavior directly
+    from api.main import _lyrics_store_consistent
+
+    class R:
+        def count(self):
+            return 5
+
+    from api.services.songs import LyricsStore
+
+    assert _lyrics_store_consistent(R(), LyricsStore(["a"] * 5)) is True
+    assert _lyrics_store_consistent(R(), LyricsStore(["a"] * 4)) is False
+
+    class RBroken:
+        def count(self):
+            raise RuntimeError("down")
+
+    assert _lyrics_store_consistent(RBroken(), LyricsStore(["a"])) is True  # unknown → don't disable
+
+
 def test_retrieval_down_503():
     from api.main import create_app
 

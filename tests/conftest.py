@@ -77,6 +77,9 @@ class FakeRetrieval:
     def ping(self):
         return self._ok
 
+    def count(self):
+        return len(self._hits) or 0
+
     def search(self, vector, limit=10, mood=None):
         if not self._ok:
             raise RuntimeError("qdrant down")
