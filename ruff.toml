@@ -1,0 +1,11 @@
+line-length = 110
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]  # long lines in docstrings/HTML blocks; length is advisory here
+
+[lint.per-file-ignores]
+"app/streamlit_app.py" = ["E402"]  # st.set_page_config ordering
+"scripts/*.py" = ["E402"]          # sys.path bootstrap before imports
+"training/*.py" = ["E402"]         # same

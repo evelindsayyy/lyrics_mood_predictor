@@ -31,7 +31,6 @@ def main() -> int:
     parser.add_argument("--out", default="models/embedder")
     args = parser.parse_args()
 
-    import numpy as np
     import torch
     from transformers import AutoModel, AutoTokenizer
 

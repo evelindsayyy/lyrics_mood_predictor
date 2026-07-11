@@ -18,7 +18,6 @@ import re
 import pandas as pd
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
-
 # thresholds on valence and energy (both 0-1)
 VALENCE_LOW = 0.3
 VALENCE_HIGH = 0.6

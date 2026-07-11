@@ -41,7 +41,6 @@ from pathlib import Path
 import httpx
 import streamlit as st
 
-
 # ------------------------------------------------------------
 # design system — load CSS + Google Fonts once at app start
 # (swapped st.markdown → st.html for <style>/<link> so Streamlit's

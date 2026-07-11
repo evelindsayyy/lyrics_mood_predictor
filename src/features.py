@@ -16,7 +16,6 @@ Claude wrote the wrappers. See ../ATTRIBUTION.md for the full breakdown.
 """
 
 import joblib
-
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
