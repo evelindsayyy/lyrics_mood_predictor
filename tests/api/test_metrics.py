@@ -36,3 +36,13 @@ def test_error_statuses_counted():
     c.post("/v1/predict", json={"lyrics": "   "})  # 400
     r = c.get("/metrics")
     assert 'status="400"' in r.text
+
+
+def test_unmatched_paths_collapse_to_unmatched_label():
+    c = _client()
+    c.get("/wp-admin.php")                    # scanner-style 404
+    c.get("/some/random/scanner/path/12345")  # another 404
+    r = c.get("/metrics")
+    assert "wp-admin" not in r.text
+    assert "scanner" not in r.text
+    assert 'path="unmatched"' in r.text
