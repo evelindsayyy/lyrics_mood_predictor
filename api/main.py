@@ -84,7 +84,10 @@ def create_app(
             app.state.default_model = reg.default
             app.state.registry_names = set(reg.models)
         if not hasattr(app.state, "retrieval"):
-            app.state.retrieval = QdrantRetrieval(cfg.qdrant_url, cfg.qdrant_collection)
+            if cfg.qdrant_path is not None:
+                app.state.retrieval = QdrantRetrieval.local(cfg.qdrant_path, cfg.qdrant_collection)
+            else:
+                app.state.retrieval = QdrantRetrieval(cfg.qdrant_url, cfg.qdrant_collection)
         if not hasattr(app.state, "embedder"):
             if cfg.embedder_dir.exists():
                 app.state.embedder = load_embedder(cfg.embedder_dir)

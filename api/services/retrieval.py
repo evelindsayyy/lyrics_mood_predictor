@@ -60,6 +60,15 @@ class QdrantRetrieval:
         self._client = QdrantClient(url=url, timeout=5)
         self._collection = collection
 
+    @classmethod
+    def local(cls, path, collection: str = "songs") -> "QdrantRetrieval":
+        """File-based serverless qdrant (demo deployments). Exclusive-lock:
+        don't index and serve the same path concurrently."""
+        self = cls.__new__(cls)
+        self._client = QdrantClient(path=str(path))
+        self._collection = collection
+        return self
+
     def ping(self) -> bool:
         try:
             self._client.get_collections()

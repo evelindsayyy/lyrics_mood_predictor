@@ -7,11 +7,17 @@ Full lyrics never enter Qdrant (copyright + size) — only a ~300-char excerpt.
 Usage (Qdrant running via docker compose):
     python scripts/index_corpus.py
 
+Serverless local-path mode (single-container demo, no server process):
+    python scripts/index_corpus.py --local-path demo/qdrant_local
+Local mode takes an exclusive lock — do NOT run the API against the same
+path while indexing.
+
 AI attribution: implementation by Claude (Anthropic) based on my specification
 (schema from design spec §3.3; artist resolution logic carried over from
 app/streamlit_app.py). See ../ATTRIBUTION.md.
 """
 
+import argparse
 import ast
 import os
 import re
@@ -106,6 +112,15 @@ def main() -> int:
     from api.config import Settings
     from src.recommend import embed_corpus, load_embedding_model
 
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--local-path",
+        default=None,
+        help="Index into a file-based serverless qdrant at this path instead of "
+        "the URL. Takes an exclusive lock — don't serve the same path while indexing.",
+    )
+    args = parser.parse_args()
+
     settings = Settings()
     if not settings.labeled_songs_path.exists():
         print(f"missing {settings.labeled_songs_path} — run notebooks/01_eda.ipynb first")
@@ -122,10 +137,16 @@ def main() -> int:
         print("cached embeddings don't match corpus — delete models/corpus_embeddings.npy and rerun")
         return 1
 
-    client = QdrantClient(url=settings.qdrant_url)
+    if args.local_path is not None:
+        client = QdrantClient(path=args.local_path)
+        target = f"local-path {args.local_path}"
+    else:
+        client = QdrantClient(url=settings.qdrant_url)
+        target = settings.qdrant_url
+    print(f"indexing into {target}")
     ensure_collection(client, settings.qdrant_collection)
     n = index_corpus(client, df, embeddings, settings.qdrant_collection)
-    print(f"indexed {n} songs into '{settings.qdrant_collection}' at {settings.qdrant_url}")
+    print(f"indexed {n} songs into '{settings.qdrant_collection}' at {target}")
     return 0
 
 

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     baseline_vectorizer: str = "tfidf_vectorizer.pkl"
     labeled_songs_path: Path = Path("data/processed/songs_labeled.csv")
     qdrant_url: str = "http://localhost:6333"
+    qdrant_path: Path | None = None
     qdrant_collection: str = "songs"
     registry_path: Path = Path("models/registry.json")
     embedder_dir: Path = Path("models/embedder")
