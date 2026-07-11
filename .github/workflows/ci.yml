@@ -14,7 +14,8 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install ruff
+      # pinned to match the locally-verified ruff version
+      - run: pip install "ruff~=0.15.21"
       - run: ruff check .
 
   test:

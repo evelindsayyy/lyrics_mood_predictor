@@ -1,5 +1,6 @@
 line-length = 110
 target-version = "py310"
+extend-exclude = ["notebooks"]  # notebooks are the frozen research record — never lint-edited
 
 [lint]
 select = ["E", "F", "W", "I"]
