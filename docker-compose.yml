@@ -20,5 +20,16 @@ services:
     depends_on:
       - qdrant
 
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    ports:
+      - "8501:8501"
+    environment:
+      LYRICMOOD_API_URL: http://api:8000
+    depends_on:
+      - api
+
 volumes:
   qdrant_storage:

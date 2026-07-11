@@ -1,44 +1,44 @@
 """
 LyricMood — paste song lyrics, get mood + explanation + 5 similar songs.
 
-Classification: TF-IDF + logistic regression, trained in notebooks/02_modeling.ipynb.
-Explanation:    SHAP LinearExplainer on the same LR, top 10 words.
-Retrieval:      MiniLM sentence embeddings + cosine similarity, filtered to the
-                predicted mood so the recs stay on-vibe.
+This file is a PURE API client: it holds zero ML code. All inference lives
+behind the LyricMood HTTP API (FastAPI), and this Streamlit app is only a UI
+container that renders whatever the API returns.
+
+    Classification + explanation → POST /v1/predict
+        (mood, confidence, probabilities, explanation tokens, model_version)
+    Retrieval (similar songs)    → POST /v1/similar
+        (results with title, artist, score)
+
+The single backend dependency is HTTP: the API base URL comes from the
+LYRICMOOD_API_URL env var (default http://localhost:8000). No joblib / sklearn /
+shap / sentence-transformers / pandas / numpy / src.* imports remain here — the
+model artifacts are owned by the API service, not the UI.
 
 UI follows DESIGN_HANDOFF.md: design tokens + component styles live in
 app/static/lyricmood.css; this file just wires Streamlit widgets to those
 class hooks (.brand, .prompt, .paper, .mood-word, .conf, .probs, .shap, .similar).
 
-Run with: `streamlit run app/streamlit_app.py` from the project root.
+Run with: `streamlit run app/streamlit_app.py` from the project root, with the
+API reachable at LYRICMOOD_API_URL — or `docker compose up` to run both.
 
 AI attribution: this file is the most AI-assisted piece of the project.
 I created the visual design upfront — LyricMood Minimal.html, lyricmood.css,
-DESIGN_HANDOFF.md, the design tokens — plus the data-flow spec and the
-@st.cache_resource caching strategy. Claude wrote the bulk of the Streamlit
-Python and the CSS overrides that re-skin Streamlit's built-in widgets to
-match my design (chipbar layout, raw-HTML SHAP chart, song-list grid,
-set_mood_accent helper). I integrated, tested, and iterated on the result.
-See ../ATTRIBUTION.md for the full breakdown.
+DESIGN_HANDOFF.md, the design tokens — plus the data-flow spec, the pivot to a
+client/server split, and the @st.cache_resource strategy (now caching an httpx
+client instead of models). Claude wrote the bulk of the Streamlit Python and the
+CSS overrides that re-skin Streamlit's built-in widgets to match my design
+(chipbar layout, raw-HTML SHAP chart, song-list grid, set_mood_accent helper),
+plus the API-client wiring and error handling. I integrated, tested, and
+iterated on the result. See ../ATTRIBUTION.md for the full breakdown.
 """
 
-import ast
+import math
 import os
-import re
-import sys
 from pathlib import Path
 
-# make `from src.x import y` work no matter where streamlit is launched from
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import joblib
-import numpy as np
-import pandas as pd
+import httpx
 import streamlit as st
-
-from src.preprocess import clean_text
-from src.explain import explain_prediction
-from src.recommend import load_embedding_model, recommend
 
 
 # ------------------------------------------------------------
@@ -348,38 +348,22 @@ SAMPLES = {
 
 
 # ------------------------------------------------------------
-# cached loader (unchanged from previous version)
+# API client — the only backend dependency is HTTP
 # ------------------------------------------------------------
 
-@st.cache_resource(show_spinner="loading models + corpus (first time takes ~10s)...")
-def load_everything():
-    """Load every heavy thing once, cache across sessions."""
-    clf = joblib.load("models/best_classifier.pkl")
-    vec = joblib.load("models/tfidf_vectorizer.pkl")
-    corpus_emb = np.load("models/corpus_embeddings.npy")
+API_URL = os.environ.get("LYRICMOOD_API_URL", "http://localhost:8000")
 
-    meta = pd.read_csv("data/processed/songs_labeled.csv").reset_index(drop=True)
-    artists = pd.read_csv(
-        "SpotGenTrack/Data Sources/spotify_artists.csv",
-        usecols=["id", "name"],
-    )
-    artist_map = dict(zip(artists["id"], artists["name"]))
 
-    def first_artist(ids_str):
-        try:
-            ids = ast.literal_eval(ids_str)
-            return artist_map.get(ids[0], "Unknown") if ids else "Unknown"
-        except (ValueError, SyntaxError):
-            return "Unknown"
+@st.cache_resource
+def api_client() -> httpx.Client:
+    return httpx.Client(base_url=API_URL, timeout=30.0)
 
-    meta["artist"] = meta["artists_id"].map(first_artist)
 
-    rng = np.random.default_rng(42)
-    bg_idx = rng.choice(len(meta), size=500, replace=False)
-    bg = vec.transform(meta["lyrics"].iloc[bg_idx].map(clean_text))
-
-    minilm = load_embedding_model()
-    return clf, vec, corpus_emb, meta, bg, minilm
+def _api_error_message(response: httpx.Response) -> str:
+    try:
+        return response.json()["error"]["message"]
+    except Exception:
+        return f"API error (HTTP {response.status_code})"
 
 
 # ------------------------------------------------------------
@@ -478,39 +462,35 @@ if go_clicked:
         st.stop()
 
     with st.spinner("reading the room…"):
-        clf, vec, corpus_emb, meta, bg, minilm = load_everything()
-
-        cleaned = clean_text(text)
-        X = vec.transform([cleaned])
-        pred = clf.predict(X)[0]
-        probs = clf.predict_proba(X)[0]
-        prob_map = dict(zip(list(clf.classes_), probs.tolist()))
-        confidence = float(probs.max())
-
-        # SHAP — guard against empty / non-vocab input
+        client = api_client()
         try:
-            exp = explain_prediction(clf, vec, cleaned, top_k=10, background=bg)
-            sv = exp["shap_values"]
-            fn = exp["feature_names"]
-            present = X.nonzero()[1]
-            all_pairs = [(str(fn[i]), float(sv[i])) for i in present]
-            top10 = sorted(all_pairs, key=lambda kv: abs(kv[1]), reverse=True)[:10]
-            top10 = sorted(top10, key=lambda kv: kv[1], reverse=True)
-        except Exception:
-            top10 = []
+            pred_resp = client.post("/v1/predict", json={"lyrics": text})
+        except httpx.HTTPError:
+            st.error(f"can't reach the LyricMood API at {API_URL} — is it running? (docker compose up)")
+            st.stop()
+        if pred_resp.status_code != 200:
+            st.error(_api_error_message(pred_resp))
+            st.stop()
+        pred = pred_resp.json()
 
-        # retrieval — MiniLM is happier with raw text than the stopword-stripped form
-        raw = re.sub(r"\[[^\]]*\]", " ", text)
-        q_emb = minilm.encode([raw], normalize_embeddings=True)[0]
-        rec_meta = meta[["name", "artist", "mood"]].rename(columns={"name": "title"})
-        recs = recommend(q_emb, corpus_emb, rec_meta, pred, top_k=5)
+        top10 = [(e["token"], e["weight"]) for e in (pred["explanation"] or [])]
+
+        recs = []
+        sim_resp = client.post(
+            "/v1/similar", json={"lyrics": text, "mood": pred["mood"], "limit": 5}
+        )
+        if sim_resp.status_code == 200:
+            recs = [
+                {"title": r["title"], "artist": r["artist"], "similarity": r["score"]}
+                for r in sim_resp.json()["results"]
+            ]
 
         st.session_state["result"] = {
-            "pred": pred,
-            "confidence": confidence,
-            "prob_map": prob_map,
+            "pred": pred["mood"],
+            "confidence": pred["confidence"],
+            "prob_map": pred["probabilities"],
             "top10": top10,
-            "recs": recs[["title", "artist", "similarity"]].to_dict("records"),
+            "recs": recs,
         }
 
 
@@ -585,7 +565,7 @@ if result:
     # SHAP chart — proper horizontal bar chart using the .shap / .shap-row classes
     if top10:
         max_abs = max(abs(v) for _, v in top10) or 0.01
-        scale_max = float(np.ceil(max_abs * 10) / 10)
+        scale_max = float(math.ceil(max_abs * 10) / 10)
 
         shap_rows = []
         for word, v in top10:
@@ -644,17 +624,25 @@ if result:
         )
 
     # similar songs
-    song_rows = []
-    for i, r in enumerate(recs):
-        song_rows.append(
-            f"""<div class="row">
-              <div class="n">{i+1:02d}</div>
-              <div>
-                <div class="t">{r['title']}</div>
-                <div class="a">{r['artist']}</div>
-              </div>
-              <div class="s">{r['similarity']:.3f}</div>
-            </div>"""
+    if recs:
+        song_rows = []
+        for i, r in enumerate(recs):
+            song_rows.append(
+                f"""<div class="row">
+                  <div class="n">{i+1:02d}</div>
+                  <div>
+                    <div class="t">{r['title']}</div>
+                    <div class="a">{r['artist']}</div>
+                  </div>
+                  <div class="s">{r['similarity']:.3f}</div>
+                </div>"""
+            )
+        list_html = "".join(song_rows)
+    else:
+        list_html = (
+            '<div class="lab" style="padding: 18px;">'
+            "retrieval offline — similar songs unavailable"
+            "</div>"
         )
 
     st.markdown(
@@ -665,7 +653,7 @@ if result:
             <div class="lab">cosine · mood-filtered</div>
           </div>
           <div class="list">
-            {''.join(song_rows)}
+            {list_html}
           </div>
         </div>
         """,
