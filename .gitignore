@@ -30,6 +30,9 @@ models/transformer/
 models/embedder/
 !models/.gitkeep
 
+# HF Spaces demo bundle (regeneratable via scripts/build_demo_bundle.py)
+demo/
+
 # Results (regeneratable)
 results/*.png
 results/*.csv

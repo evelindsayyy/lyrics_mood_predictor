@@ -1,0 +1,30 @@
+# Single-container HF Spaces demo: FastAPI (:8000) + Streamlit (:7860) in one
+# image, sharing the bundled model artifacts and a file-based serverless Qdrant.
+# Build the bundle first: `python scripts/build_demo_bundle.py` (creates demo/).
+# Full lyrics are NOT in the bundle, so /v1/songs single-match analysis 503s by
+# design; predict/search/similar/candidates all work.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-api.txt requirements-ui.txt ./
+RUN pip install --no-cache-dir -r requirements-api.txt -r requirements-ui.txt
+
+COPY src/ src/
+COPY api/ api/
+COPY app/ app/
+COPY demo/ demo/
+COPY docker/spaces_launcher.sh docker/spaces_launcher.sh
+RUN chmod +x docker/spaces_launcher.sh
+
+# Point every artifact path at the in-bundle copies. Names are api/config.py
+# field names, uppercased and prefixed LYRICMOOD_ (env_prefix). labeled_songs_path
+# is left at its default (absent) so the lyrics store degrades by design.
+ENV LYRICMOOD_MODEL_DIR=demo/models \
+    LYRICMOOD_REGISTRY_PATH=demo/models/registry.json \
+    LYRICMOOD_EMBEDDER_DIR=demo/models/embedder \
+    LYRICMOOD_QDRANT_PATH=demo/qdrant_local \
+    LYRICMOOD_API_URL=http://localhost:8000
+
+EXPOSE 7860
+CMD ["docker/spaces_launcher.sh"]
