@@ -27,3 +27,4 @@ class Settings(BaseSettings):
     embedder_dir: Path = Path("models/embedder")
     shap_background_size: int = 500
     max_lyrics_chars: int = 10_000
+    rate_limit: str = "30/minute"
