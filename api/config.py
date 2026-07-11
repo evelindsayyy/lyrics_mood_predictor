@@ -24,5 +24,6 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "songs"
     registry_path: Path = Path("models/registry.json")
+    embedder_dir: Path = Path("models/embedder")
     shap_background_size: int = 500
     max_lyrics_chars: int = 10_000

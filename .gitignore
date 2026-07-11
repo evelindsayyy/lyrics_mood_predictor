@@ -27,6 +27,7 @@ models/*.pkl
 models/*.npy
 models/*.joblib
 models/transformer/
+models/embedder/
 !models/.gitkeep
 
 # Results (regeneratable)
