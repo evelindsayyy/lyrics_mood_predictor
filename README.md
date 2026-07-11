@@ -49,11 +49,18 @@ Both videos are stored in this repository under [`videos/`](videos/) and also li
 
 ## Evaluation
 
-> **Week 2 (in progress):** a fine-tuned DistilBERT is being added behind the same API
-> (`?model=transformer`). Numbers will appear here from `training/evaluate.py` reports
-> once the Colab fine-tune completes — see [training/README.md](training/README.md).
+### Baseline vs. fine-tuned transformer
 
-Best model: logistic regression (C=1.0, L2, `class_weight='balanced'`) on TF-IDF features (unigrams + bigrams, 20k vocab cap, min_df=3, sublinear_tf). The first-pass sweep of 7 configs (4 LR × 3 MultinomialNB) is in [notebooks/02_modeling.ipynb](notebooks/02_modeling.ipynb); a second-pass tuning of the TF-IDF knobs is in [notebooks/03_evaluation.ipynb](notebooks/03_evaluation.ipynb).
+Two models serve behind the same API (`POST /v1/predict?model=baseline|transformer`), scored on the identical frozen test split (n=7,660) by `training/evaluate.py` — full reports in [`results/eval_baseline.md`](results/eval_baseline.md) and [`results/eval_transformer.md`](results/eval_transformer.md):
+
+| model | test accuracy | test macro F1 | serving | explanations |
+|---|---|---|---|---|
+| TF-IDF + logistic regression (baseline) | 0.432 | 0.371 | sklearn, ~ms | exact SHAP (`LinearExplainer`) |
+| **DistilBERT fine-tune, ONNX int8 (default)** | **0.521** | **0.395** | onnxruntime CPU, torch-free | approximate SHAP (Text masker, capped) |
+
+The transformer (2 epochs on a free Colab T4, class-weighted loss, early-stopped on val macro F1 = 0.408) wins on both headline metrics — most of the gain is Hype recall (0.46 → 0.68) and Sad, at the cost of some Calm recall (0.39 → 0.22). Both models remain served: the baseline is kept as the fast, exactly-explainable option, and the accuracy↔explainability trade-off is deliberate. The remaining ceiling is label noise from valence/energy thresholding, not model capacity — see the error analysis below.
+
+Baseline recipe: logistic regression (C=1.0, L2, `class_weight='balanced'`) on TF-IDF features (unigrams + bigrams, 20k vocab cap, min_df=3, sublinear_tf). The first-pass sweep of 7 configs (4 LR × 3 MultinomialNB) is in [notebooks/02_modeling.ipynb](notebooks/02_modeling.ipynb); a second-pass tuning of the TF-IDF knobs is in [notebooks/03_evaluation.ipynb](notebooks/03_evaluation.ipynb). Baseline detail:
 
 | metric | value | notes |
 |---|---|---|

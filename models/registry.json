@@ -1,5 +1,5 @@
 {
-  "default": "baseline",
+  "default": "transformer",
   "models": {
     "baseline": {"kind": "baseline", "version": "baseline-lr-v1"},
     "transformer": {"kind": "onnx", "version": "distilbert-mood-v1", "dir": "models/transformer"}

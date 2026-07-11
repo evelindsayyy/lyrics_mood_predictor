@@ -26,6 +26,7 @@ song_lyrics.csv
 models/*.pkl
 models/*.npy
 models/*.joblib
+models/transformer/
 !models/.gitkeep
 
 # Results (regeneratable)

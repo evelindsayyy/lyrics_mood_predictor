@@ -63,5 +63,5 @@ def test_committed_registry_is_loadable():
     from api.services.registry import load_registry
 
     reg = load_registry(__import__("pathlib").Path("models/registry.json"))
-    assert reg.default == "baseline"
-    assert "transformer" in reg.models
+    assert reg.default == "transformer"  # promoted 2026-07-10 after beating baseline on the frozen split
+    assert "baseline" in reg.models
