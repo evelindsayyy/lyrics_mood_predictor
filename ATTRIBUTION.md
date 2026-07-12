@@ -62,9 +62,10 @@ The actual Colab fine-tune run, the transformer-vs-baseline comparison, and the 
 - **`docker/Dockerfile.spaces`** + **`docker/spaces_launcher.sh`** — the single-container image (uvicorn :8000 + Streamlit :7860 in one process supervisor) with every `LYRICMOOD_*` artifact path pointed at the in-bundle copies; `labeled_songs_path` is left absent on purpose so the lyrics store degrades.
 - **`api/config.py` / `api/services/retrieval.py` / `api/main.py`** — the additive `qdrant_path` setting and `QdrantRetrieval.local()` that switch retrieval to serverless local-path Qdrant when the path is set. I specified that this be additive — no existing contract, route, or settings name changes.
 - **Deferred-minors cleanup** — the small week 1–3 fixes I had flagged for later (empty-embed guard, registry `kind` validation, whitespace-only search-query guard, `--limit` validation, E741 renames) with their tests; no public contract changed.
-- **`docs/DEPLOY_SPACES.md`** and the **`README.md` rewrite** (architecture diagram, API table, the "class project → production system" timeline) — drafted by Claude from my notes and the verified repo state; I edited, validated, and own the content. The LLM-assisted relabeling idea is documented as future work.
+- **`docs/DEPLOY_DEMO.md`** and the **`README.md` rewrite** (architecture diagram, API table, the "class project → production system" timeline) — drafted by Claude from my notes and the verified repo state; I edited, validated, and own the content. The LLM-assisted relabeling idea is documented as future work.
+- **`demo_entry.py` / `requirements-demo.txt`** (demo-hosting pivot) — when HF Spaces' free tier dropped the Docker SDK, I redirected the demo to Streamlit Community Cloud and specified the new architecture (SCC entrypoint that downloads the model bundle from a HF model repo, runs the API in-process on a daemon thread, rewrites the bundled registry to absolute paths at runtime, and hands off to the unmodified UI via `runpy` so the UI stays single-source). Claude wrote the glue and the runbook; I verified the local end-to-end and own the design decision.
 
-The Colab fine-tune, the Space deployment itself, and filling the README's live-demo URL are mine to do (post-deploy) — the runbook exists so I can.
+The Colab fine-tune, the Streamlit Community Cloud deployment itself, and filling the README's live-demo URL are mine to do (post-deploy) — the runbook exists so I can.
 
 ## Streamlit app — `app/streamlit_app.py`
 
