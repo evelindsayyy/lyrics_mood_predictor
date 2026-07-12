@@ -50,11 +50,16 @@ container boots). This is expected and fine for a portfolio demo.
 
   See [SETUP.md](../SETUP.md) if any of these don't exist yet.
 
-## Step 1 — Log in to Hugging Face
+## Step 1 — Prerequisites + log in to Hugging Face
 
 ```bash
-pip install huggingface_hub
-huggingface-cli login          # paste a token with write access (hf.co/settings/tokens)
+# git-lfs (large-file support — the bundle is ~500MB)
+brew install git-lfs           # macOS; on Linux: apt install git-lfs
+git lfs install                # one-time git hook setup
+
+# hugging face CLI (the old `huggingface-cli` command is deprecated)
+pip install -U huggingface_hub
+hf auth login                  # paste a token with WRITE access (hf.co/settings/tokens)
 ```
 
 ## Step 2 — Create a Docker Space
