@@ -1,22 +1,42 @@
 # LyricMood
 
 [![ci](https://github.com/evelindsayyy/lyrics_mood_predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/evelindsayyy/lyrics_mood_predictor/actions/workflows/ci.yml)
+[![live demo](https://img.shields.io/badge/demo-live-brightgreen)](https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/)
+[![python](https://img.shields.io/badge/python-3.10%2B-blue)](requirements-api.txt)
+[![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen)](tests/)
 
-Paste song lyrics, get the mood — *and why* — plus five songs that feel the same. A two-model ML system (interpretable baseline + fine-tuned transformer) served behind one FastAPI, with a Streamlit UI as a thin client.
+Paste song lyrics, get the mood — _and why_ — plus five songs that feel the same. A two-model ML system (interpretable baseline + fine-tuned transformer) served behind one FastAPI, with a Streamlit UI as a thin client. Started as an ML course project; rebuilt over four spec-driven weeks into a production-style system with vector search, CI, and a hosted demo.
 
-**[Live demo →](PASTE_SPACE_URL_HERE)**
+**[Live demo →](https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/)** _(free tier — first visit after a quiet week takes ~2 min to wake)_
+
+<p align="center">
+  <a href="https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/">
+    <img src="docs/images/demo.png" width="760" alt="LyricMood live demo: a sad verse pasted in, predicted Sad at 43% confidence, probability across all five moods, the SHAP word-level explanation, and five similar songs from vector search">
+  </a>
+</p>
 
 ## What it Does
 
 LyricMood answers three kinds of query over a shared song corpus, all through one HTTP API:
 
-1. **Predict a mood from pasted lyrics** — one of *Hype, Romantic, Calm, Sad, Angry*, with a confidence score and a **word-level SHAP explanation** (the top words that pushed the model toward, or away from, its call), so the model isn't a black box.
+1. **Predict a mood from pasted lyrics** — one of _Hype, Romantic, Calm, Sad, Angry_, with a confidence score and a **word-level SHAP explanation** (the top words that pushed the model toward, or away from, its call), so the model isn't a black box.
 2. **Search the corpus by free-text vibe** — e.g. `rainy late night drive` — and get back the songs whose lyrics sit closest in embedding space.
 3. **Find similar songs** — paste lyrics (or look one up by title) and get five songs with a matching emotional profile.
 
 Two models serve the mood prediction behind the same endpoint, selectable per request: a **TF-IDF + logistic-regression baseline** (fast, exactly explainable) and a **fine-tuned DistilBERT** exported to int8 ONNX (higher accuracy, torch-free serving). The **Streamlit UI is a pure API client** — zero ML imports; it just renders what the API returns.
 
 Mood labels are derived, not annotated: they come from Spotify's audio features (valence + energy, cut into regions of [Russell's circumplex model](#research-connections)), so the model learns which lyrical patterns go with which audio-derived moods.
+
+## Tech Stack
+
+| layer                   | tech                                                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Serving**             | FastAPI · Pydantic v2 · uvicorn · **onnxruntime** — all inference is torch-free int8/fp32 ONNX on CPU                                                       |
+| **Models**              | scikit-learn (TF-IDF + logistic regression) · **DistilBERT** fine-tuned with PyTorch on a Colab T4, exported to int8 ONNX · **SHAP** explanations           |
+| **Retrieval**           | **Qdrant** vector DB (76,595 songs) · MiniLM sentence embeddings via a parity-checked ONNX export                                                            |
+| **UI**                  | Streamlit as a pure API client (httpx; zero ML imports)                                                                                                     |
+| **Ops & quality**       | Docker Compose · **GitHub Actions CI** (lint + 106-test pytest suite + image builds) · Prometheus `/metrics` · slowapi rate limiting · structlog · ruff     |
+| **Training & tracking** | MLflow experiment tracking · frozen-split eval harness with a quality gate (`training/evaluate.py`)                                                          |
 
 ## Architecture
 
@@ -52,14 +72,14 @@ Deeper rationale for the two-pipeline split is in [`docs/architecture.md`](docs/
 
 All endpoints are under `/v1` except `/health` and `/metrics`. Error responses use `{"error": {code, message}}`.
 
-| endpoint | what it does | example |
-|---|---|---|
-| `POST /v1/predict` | lyrics → mood + confidence + SHAP words (`?model=baseline\|transformer`) | `curl -X POST localhost:8000/v1/predict -H 'content-type: application/json' -d '{"lyrics": "..."}'` |
-| `GET /v1/search` | free-text vibe → ranked songs | `curl "localhost:8000/v1/search?q=rainy%20late%20night%20drive"` |
-| `POST /v1/similar` | lyrics → 5 similar songs (mood-filtered) | `curl -X POST localhost:8000/v1/similar -H 'content-type: application/json' -d '{"lyrics": "...", "limit": 5}'` |
-| `GET /v1/songs` | title/artist lookup → full mood analysis + similar (or candidate list on ambiguous match) | `curl "localhost:8000/v1/songs?title=midnight"` |
-| `GET /health` | liveness / readiness | `curl localhost:8000/health` |
-| `GET /metrics` | Prometheus counters + histograms per route | `curl localhost:8000/metrics` |
+| endpoint           | what it does                                                                              | example                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/predict` | lyrics → mood + confidence + SHAP words (`?model=baseline\|transformer`)                  | `curl -X POST localhost:8000/v1/predict -H 'content-type: application/json' -d '{"lyrics": "..."}'`             |
+| `GET /v1/search`   | free-text vibe → ranked songs                                                             | `curl "localhost:8000/v1/search?q=rainy%20late%20night%20drive"`                                                |
+| `POST /v1/similar` | lyrics → 5 similar songs (mood-filtered)                                                  | `curl -X POST localhost:8000/v1/similar -H 'content-type: application/json' -d '{"lyrics": "...", "limit": 5}'` |
+| `GET /v1/songs`    | title/artist lookup → full mood analysis + similar (or candidate list on ambiguous match) | `curl "localhost:8000/v1/songs?title=midnight"`                                                                 |
+| `GET /health`      | liveness / readiness                                                                      | `curl localhost:8000/health`                                                                                    |
+| `GET /metrics`     | Prometheus counters + histograms per route                                                | `curl localhost:8000/metrics`                                                                                   |
 
 Rate limiting is 30 req/min/IP (`429` + `Retry-After`); `/health` and `/metrics` are exempt.
 
@@ -93,21 +113,21 @@ To run the API without Docker: `uvicorn api.main:app --reload` (needs local `mod
 
 Two models serve behind the same API (`POST /v1/predict?model=baseline|transformer`), scored on the identical frozen test split (n=7,660) by `training/evaluate.py` — full reports in [`results/eval_baseline.md`](results/eval_baseline.md) and [`results/eval_transformer.md`](results/eval_transformer.md):
 
-| model | test accuracy | test macro F1 | serving | explanations |
-|---|---|---|---|---|
-| TF-IDF + logistic regression (baseline) | 0.432 | 0.371 | sklearn, ~ms | exact SHAP (`LinearExplainer`) |
-| **DistilBERT fine-tune, ONNX int8 (default)** | **0.521** | **0.395** | onnxruntime CPU, torch-free | approximate SHAP (Text masker, capped) |
+| model                                         | test accuracy | test macro F1 | serving                     | explanations                           |
+| --------------------------------------------- | ------------- | ------------- | --------------------------- | -------------------------------------- |
+| TF-IDF + logistic regression (baseline)       | 0.432         | 0.371         | sklearn, ~ms                | exact SHAP (`LinearExplainer`)         |
+| **DistilBERT fine-tune, ONNX int8 (default)** | **0.521**     | **0.395**     | onnxruntime CPU, torch-free | approximate SHAP (Text masker, capped) |
 
 The transformer (2 epochs on a free Colab T4, class-weighted loss, early-stopped on val macro F1 = 0.408) wins on both headline metrics — most of the gain is Hype recall (0.46 → 0.68) and Sad, at the cost of some Calm recall (0.39 → 0.22). Both models remain served: the baseline is kept as the fast, exactly-explainable option, and the accuracy↔explainability trade-off is deliberate. The remaining ceiling is label noise from valence/energy thresholding, not model capacity — see the error analysis below.
 
 Baseline recipe: logistic regression (C=1.0, L2, `class_weight='balanced'`) on TF-IDF features (unigrams + bigrams, 20k vocab cap, min_df=3, sublinear_tf). The first-pass sweep of 7 configs (4 LR × 3 MultinomialNB) is in [notebooks/02_modeling.ipynb](notebooks/02_modeling.ipynb); a second-pass tuning of the TF-IDF knobs is in [notebooks/03_evaluation.ipynb](notebooks/03_evaluation.ipynb). Baseline detail:
 
-| metric | value | notes |
-|---|---|---|
-| test accuracy | 0.432 | vs. 0.546 majority-class baseline |
-| test macro F1 | 0.371 | vs. 0.141 majority-class, 0.201 random-weighted |
-| per-class precision | Hype 0.73, Sad 0.33, Calm 0.27, Romantic 0.26, Angry 0.23 | |
-| per-class recall | Angry 0.45, Hype 0.46, Romantic 0.40, Calm 0.39, Sad 0.36 | |
+| metric              | value                                                     | notes                                           |
+| ------------------- | --------------------------------------------------------- | ----------------------------------------------- |
+| test accuracy       | 0.432                                                     | vs. 0.546 majority-class baseline               |
+| test macro F1       | 0.371                                                     | vs. 0.141 majority-class, 0.201 random-weighted |
+| per-class precision | Hype 0.73, Sad 0.33, Calm 0.27, Romantic 0.26, Angry 0.23 |                                                 |
+| per-class recall    | Angry 0.45, Hype 0.46, Romantic 0.40, Calm 0.39, Sad 0.36 |                                                 |
 
 Macro F1 is the right metric here because Hype is ~55% of the corpus — overall accuracy is easy to game by just predicting Hype. The model beats the majority-class baseline's macro F1 by a factor of 2.5×.
 
@@ -115,13 +135,13 @@ Error analysis in [notebooks/03_evaluation.ipynb](notebooks/03_evaluation.ipynb)
 
 ### Each project objective has a quantitative metric
 
-| objective | metric | result |
-|---|---|---|
-| Predict mood from lyrics | test accuracy / macro F1 | 0.432 / 0.371 (vs. 0.546 / 0.141 majority-class) |
-| SHAP explanations are *faithful* (not decorative) | mean confidence drop when top-5 SHAP words deleted; class-flip rate | 0.098 mean drop; 62/100 class flips on 100 correctly-classified test songs |
-| MiniLM retrieval carries mood signal independently of the explicit mood filter | unfiltered mood-match precision@5 vs. random baseline | 0.478 vs. 0.354 random — **1.35× lift** on 200 corpus queries |
+| objective                                                                      | metric                                                              | result                                                                     |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Predict mood from lyrics                                                       | test accuracy / macro F1                                            | 0.432 / 0.371 (vs. 0.546 / 0.141 majority-class)                           |
+| SHAP explanations are _faithful_ (not decorative)                              | mean confidence drop when top-5 SHAP words deleted; class-flip rate | 0.098 mean drop; 62/100 class flips on 100 correctly-classified test songs |
+| MiniLM retrieval carries mood signal independently of the explicit mood filter | unfiltered mood-match precision@5 vs. random baseline               | 0.478 vs. 0.354 random — **1.35× lift** on 200 corpus queries              |
 
-Full derivations in the *evaluation directly tied to project objectives* section of [notebooks/03_evaluation.ipynb](notebooks/03_evaluation.ipynb).
+Full derivations in the _evaluation directly tied to project objectives_ section of [notebooks/03_evaluation.ipynb](notebooks/03_evaluation.ipynb).
 
 ### Sample outputs
 
@@ -159,9 +179,9 @@ Both videos are stored in this repository under [`videos/`](videos/) and also li
 
 This project leans on three pieces of prior work:
 
-- **Russell, J. A. (1980). *A circumplex model of affect.*** *Journal of Personality and Social Psychology, 39(6), 1161–1178.* — Motivates the 2-D valence/energy mood space. The 5 mood labels (Hype, Romantic, Calm, Sad, Angry) are named regions in Russell's circumplex, cut by thresholding Spotify's `valence` and `energy` scalars.
-- **Hu, X., & Downie, J. S. (2010). *When lyrics outperform audio for music mood classification: A feature analysis.*** *Proceedings of ISMIR 2010.* — Shows lyric-derived features can beat audio features on mood classification. Motivates using lyrics (not audio features) as the model input, while letting audio features serve only as label proxies.
-- **Reimers, N., & Gurevych, I. (2019). *Sentence-BERT: Sentence embeddings using Siamese BERT-networks.*** *Proceedings of EMNLP 2019.* — Sentence-transformer architecture used for the retrieval half of the app. Specifically I use the pretrained `all-MiniLM-L6-v2` model, which outputs 384-d vectors cheap enough to index the full ~80k-song corpus.
+- **Russell, J. A. (1980). _A circumplex model of affect._** _Journal of Personality and Social Psychology, 39(6), 1161–1178._ — Motivates the 2-D valence/energy mood space. The 5 mood labels (Hype, Romantic, Calm, Sad, Angry) are named regions in Russell's circumplex, cut by thresholding Spotify's `valence` and `energy` scalars.
+- **Hu, X., & Downie, J. S. (2010). _When lyrics outperform audio for music mood classification: A feature analysis._** _Proceedings of ISMIR 2010._ — Shows lyric-derived features can beat audio features on mood classification. Motivates using lyrics (not audio features) as the model input, while letting audio features serve only as label proxies.
+- **Reimers, N., & Gurevych, I. (2019). _Sentence-BERT: Sentence embeddings using Siamese BERT-networks._** _Proceedings of EMNLP 2019._ — Sentence-transformer architecture used for the retrieval half of the app. Specifically I use the pretrained `all-MiniLM-L6-v2` model, which outputs 384-d vectors cheap enough to index the full ~80k-song corpus.
 
 ## Individual Contributions
 
