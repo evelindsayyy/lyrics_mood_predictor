@@ -9,6 +9,8 @@ container that renders whatever the API returns.
         (mood, confidence, probabilities, explanation tokens, model_version)
     Retrieval (similar songs)    → POST /v1/similar
         (results with title, artist, score)
+    Vibe search (free-text)      → GET  /v1/search
+        (semantic search over the whole corpus; results title, artist, score)
 
 The single backend dependency is HTTP: the API base URL comes from the
 LYRICMOOD_API_URL env var (default http://localhost:8000). No joblib / sklearn /
@@ -31,6 +33,11 @@ CSS overrides that re-skin Streamlit's built-in widgets to match my design
 (chipbar layout, raw-HTML SHAP chart, song-list grid, set_mood_accent helper),
 plus the API-client wiring and error handling. I integrated, tested, and
 iterated on the result. See ../ATTRIBUTION.md for the full breakdown.
+
+The "search by vibe" section (free-text GET /v1/search over the whole corpus)
+follows the same client pattern: I specified its placement, behavior contract,
+and design-system reuse; Claude wrote the widget wiring and the .stTextInput
+CSS override.
 """
 
 import html
@@ -138,6 +145,41 @@ body, .stApp {
   resize: vertical !important;
 }
 .stTextArea textarea::placeholder {
+  color: var(--ink-3) !important;
+  font-style: italic;
+  opacity: 1 !important;
+}
+
+/* --- vibe search: one-line text_input sibling of the big textarea --- */
+.st-key-vibe { margin-top: 56px; }
+.stTextInput label { display: none; }
+.stTextInput [data-baseweb="input"],
+.stTextInput [data-baseweb="base-input"],
+.stTextInput > div > div {
+  background: var(--paper-2) !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: 6px !important;
+  padding: 0 !important;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.stTextInput [data-baseweb="input"]:focus-within,
+.stTextInput > div > div:focus-within {
+  border-color: var(--ink-2) !important;
+  box-shadow: 0 1px 0 var(--ink-2);
+}
+.stTextInput input {
+  font-family: var(--sans) !important;
+  font-weight: 400 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: var(--ink) !important;
+  background: var(--paper-2) !important;
+  padding: 11px 16px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  caret-color: var(--ink) !important;
+}
+.stTextInput input::placeholder {
   color: var(--ink-3) !important;
   font-style: italic;
   opacity: 1 !important;
@@ -374,6 +416,8 @@ if "lyrics" not in st.session_state:
     st.session_state["lyrics"] = ""
 if "result" not in st.session_state:
     st.session_state["result"] = None
+if "vibe" not in st.session_state:
+    st.session_state["vibe"] = None
 
 
 def set_sample(sample_key: str) -> None:
@@ -384,6 +428,8 @@ def set_sample(sample_key: str) -> None:
 def clear_all() -> None:
     st.session_state["lyrics"] = ""
     st.session_state["result"] = None
+    st.session_state["vibe"] = None
+    st.session_state["vibe_q"] = ""
 
 
 # ------------------------------------------------------------
@@ -662,3 +708,90 @@ if result:
         """,
         unsafe_allow_html=True,
     )
+
+
+# ------------------------------------------------------------
+# search by vibe — free-text semantic search over the whole corpus.
+# renders unconditionally (works with or without a prior prediction);
+# results persist across reruns via session state, like `result`.
+# ------------------------------------------------------------
+
+with st.container(key="vibe"):
+    st.markdown(
+        """
+        <div class="section-head">
+          <h3>search by <em>vibe</em></h3>
+          <div class="lab">semantic · 76,595 songs</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.text_input(
+        "vibe",
+        key="vibe_q",
+        placeholder="rainy late night drive · gym pump-up · slow sunday morning…",
+        label_visibility="collapsed",
+    )
+    vibe_clicked = st.button("find songs", key="vibe_btn")
+
+    if vibe_clicked:
+        q = (st.session_state.get("vibe_q") or "").strip()
+        if len(q) < 3:
+            st.warning("give me at least a few words 🙂")
+        else:
+            q = q[:200]
+            try:
+                search_resp = api_client().get("/v1/search", params={"q": q, "limit": 5})
+            except httpx.HTTPError:
+                st.error(f"can't reach the LyricMood API at {API_URL} — is it running? (docker compose up)")
+                search_resp = None
+            if search_resp is not None:
+                if search_resp.status_code == 200:
+                    st.session_state["vibe"] = {
+                        "q": q,
+                        "results": [
+                            {"title": r["title"], "artist": r["artist"], "score": r["score"]}
+                            for r in search_resp.json()["results"]
+                        ],
+                    }
+                elif search_resp.status_code == 503:
+                    # retrieval/search unavailable — mark the degraded state
+                    st.session_state["vibe"] = {"q": q, "results": None}
+                else:
+                    st.error(_api_error_message(search_resp))
+
+    vibe = st.session_state["vibe"]
+    if vibe is not None:
+        vibe_results = vibe["results"]
+        if vibe_results:
+            vibe_rows = []
+            for i, r in enumerate(vibe_results):
+                vibe_rows.append(
+                    f"""<div class="row">
+                      <div class="n">{i+1:02d}</div>
+                      <div>
+                        <div class="t">{html.escape(r['title'])}</div>
+                        <div class="a">{html.escape(r['artist'])}</div>
+                      </div>
+                      <div class="s">{r['score']:.3f}</div>
+                    </div>"""
+                )
+            vibe_list_html = "".join(vibe_rows)
+        else:
+            vibe_list_html = (
+                '<div class="lab" style="padding: 18px;">'
+                "retrieval offline — search unavailable"
+                "</div>"
+            )
+
+        st.markdown(
+            f"""
+            <div class="similar">
+              <div class="list">
+                {vibe_list_html}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
