@@ -11,7 +11,7 @@ Paste song lyrics, get the mood — _and why_ — plus five songs that feel the 
 
 <p align="center">
   <a href="https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/">
-    <img src="docs/images/demo.png" width="760" alt="LyricMood live demo: a sad verse pasted in, predicted Sad at 43% confidence, probability across all five moods, the SHAP word-level explanation, and five similar songs from vector search">
+    <img src="docs/images/demo.png" width="760" alt="LyricMood live demo: a sad verse pasted in, predicted Sad at 43% confidence, probability across all five moods, the SHAP word-level explanation, five similar songs from vector search, and a free-text vibe search for 'rainy late night drive'">
   </a>
 </p>
 
