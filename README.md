@@ -1,10 +1,19 @@
 # LyricMood
 
 [![ci](https://github.com/evelindsayyy/lyrics_mood_predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/evelindsayyy/lyrics_mood_predictor/actions/workflows/ci.yml)
+[![live demo](https://img.shields.io/badge/demo-live-brightgreen)](https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/)
+[![python](https://img.shields.io/badge/python-3.10%2B-blue)](requirements-api.txt)
+[![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen)](tests/)
 
-Paste song lyrics, get the mood — _and why_ — plus five songs that feel the same. A two-model ML system (interpretable baseline + fine-tuned transformer) served behind one FastAPI, with a Streamlit UI as a thin client.
+Paste song lyrics, get the mood — _and why_ — plus five songs that feel the same. A two-model ML system (interpretable baseline + fine-tuned transformer) served behind one FastAPI, with a Streamlit UI as a thin client. Started as an ML course project; rebuilt over four spec-driven weeks into a production-style system with vector search, CI, and a hosted demo.
 
-**[Live demo →](https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/)**
+**[Live demo →](https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/)** _(free tier — first visit after a quiet week takes ~2 min to wake)_
+
+<p align="center">
+  <a href="https://lyricsmoodpredictor-zrtbnhzdwavalcsqriyexb.streamlit.app/">
+    <img src="docs/images/demo.png" width="760" alt="LyricMood live demo: a sad verse pasted in, predicted Sad at 43% confidence, probability across all five moods, the SHAP word-level explanation, and five similar songs from vector search">
+  </a>
+</p>
 
 ## What it Does
 
@@ -17,6 +26,17 @@ LyricMood answers three kinds of query over a shared song corpus, all through on
 Two models serve the mood prediction behind the same endpoint, selectable per request: a **TF-IDF + logistic-regression baseline** (fast, exactly explainable) and a **fine-tuned DistilBERT** exported to int8 ONNX (higher accuracy, torch-free serving). The **Streamlit UI is a pure API client** — zero ML imports; it just renders what the API returns.
 
 Mood labels are derived, not annotated: they come from Spotify's audio features (valence + energy, cut into regions of [Russell's circumplex model](#research-connections)), so the model learns which lyrical patterns go with which audio-derived moods.
+
+## Tech Stack
+
+| layer                   | tech                                                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Serving**             | FastAPI · Pydantic v2 · uvicorn · **onnxruntime** — all inference is torch-free int8/fp32 ONNX on CPU                                                       |
+| **Models**              | scikit-learn (TF-IDF + logistic regression) · **DistilBERT** fine-tuned with PyTorch on a Colab T4, exported to int8 ONNX · **SHAP** explanations           |
+| **Retrieval**           | **Qdrant** vector DB (76,595 songs) · MiniLM sentence embeddings via a parity-checked ONNX export                                                            |
+| **UI**                  | Streamlit as a pure API client (httpx; zero ML imports)                                                                                                     |
+| **Ops & quality**       | Docker Compose · **GitHub Actions CI** (lint + 106-test pytest suite + image builds) · Prometheus `/metrics` · slowapi rate limiting · structlog · ruff     |
+| **Training & tracking** | MLflow experiment tracking · frozen-split eval harness with a quality gate (`training/evaluate.py`)                                                          |
 
 ## Architecture
 
