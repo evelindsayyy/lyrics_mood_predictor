@@ -46,3 +46,7 @@ Thumbs.db
 .vscode/
 .idea/
 mlflow.db
+
+# README figures (committed despite results/*.png rule above)
+!results/confusion_matrix.png
+!results/shap_angry.png
