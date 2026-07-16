@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# fork PRs and any compromised action get a read-only token — nothing in CI needs write
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
